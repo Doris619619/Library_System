@@ -55,10 +55,10 @@ bool DatabaseInitializer::clearExistingData() {
 bool DatabaseInitializer::insertSampleSeats() {
     try {
         // 安静学习区 (quiet)
-        database_.insertSeat("A1", 100, 100, 50, 50);
-        database_.insertSeat("A2", 200, 100, 50, 50);
-        database_.insertSeat("A3",  300, 100, 50, 50);
-        database_.insertSeat("A4",  400, 100, 50, 50);
+        database_.insertSeat("S1", 100, 100, 50, 50);
+        database_.insertSeat("S2", 200, 100, 50, 50);
+        database_.insertSeat("S3",  300, 100, 50, 50);
+        database_.insertSeat("S4",  400, 100, 50, 50);
 
         return true;
 
@@ -75,13 +75,13 @@ bool DatabaseInitializer::insertSampleEvents() {
         std::string two_hours_ago = TimeUtils::addHours(current_time, -2);
 
         // 插入一些历史事件
-        database_.insertSeatEvent("A1", "Seated", two_hours_ago, 3600);
-        database_.insertSeatEvent("A2", "Unseated", two_hours_ago, 0);
+        database_.insertSeatEvent("S1", "Seated", two_hours_ago, 3600);
+        database_.insertSeatEvent("S2", "Unseated", two_hours_ago, 0);
 
         // 插入当前状态事件
-        database_.insertSeatEvent("A1", "Seated", current_time, 0);
-        database_.insertSeatEvent("A2", "Seated", current_time, 0);
-        database_.insertSeatEvent("A3", "Unseated", current_time, 0);
+        database_.insertSeatEvent("S1", "Seated", current_time, 0);
+        database_.insertSeatEvent("S2", "Seated", current_time, 0);
+        database_.insertSeatEvent("S3", "Unseated", current_time, 0);
 
 
         return true;
