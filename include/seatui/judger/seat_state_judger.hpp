@@ -1,6 +1,7 @@
 #ifndef SEAT_STATE_JUDGER_HPP
 #define SEAT_STATE_JUDGER_HPP
 
+#include "data_structures.hpp"
 #include <opencv2/opencv.hpp>
 #include <vector>
 #include <string>
