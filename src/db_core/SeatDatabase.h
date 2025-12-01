@@ -48,9 +48,6 @@ public:
                           const std::string& start_time, 
                           const std::string& end_time);
     
-    //double getZoneOccupancyRate(const std::string& zone, 
-    //                           const std::string& date_hour);
-    
     double getOverallOccupancyRate(const std::string& date_hour);
     
     // UI 数据接口
