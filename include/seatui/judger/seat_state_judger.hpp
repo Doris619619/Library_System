@@ -82,10 +82,9 @@ private:
     };
     unordered_map<string, SeatTimer> seat_timers_;
 
-    Ptr<BackgroundSubtractorMOG2> mog2_;
-    Mat preprocessFgMask(const Mat& frame, const Rect& roi);
     float calculateIoU(const Rect& rect1, const Rect& rect2);
     string getISO8601Timestamp();
+    std::unordered_set<std::string> processed_files_;
 };
 
 #endif // SEAT_STATE_JUDGER_HPP

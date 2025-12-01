@@ -41,6 +41,7 @@ struct B2CD_State {
     int source_frame_id;                   // 关联的帧ID
 };
 
+
 // 4. B模块→C/D模块的异常警报数据
 struct B2CD_Alert {
     std::string alert_id;                  // 警报唯一ID（seat_id_时间戳）

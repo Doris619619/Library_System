@@ -1,6 +1,6 @@
 #include "seatui/judger/seat_state_judger.hpp"
 
-// include DB 实现头（从 src/judger_core 跳到 src/db_core）
+//从 src/judger_core 跳到 src/db_core
 #include "../db_core/SeatDatabase.h"
 
 #include <opencv2/video/background_segm.hpp>
@@ -17,6 +17,12 @@ namespace fs = std::filesystem;
 using namespace std;
 using namespace cv;
 
+static inline std::string normalizeSeatId(const std::string& raw) {
+    if (raw.empty()) return "S0";
+    if (raw[0] == 'S') return raw;
+    return "S" + raw;
+}
+
 // ---------- Constructor ----------
 SeatStateJudger::SeatStateJudger()
 {
@@ -28,9 +34,6 @@ SeatStateJudger::SeatStateJudger()
         std::cout << "[BModule] SeatDatabase 初始化失败: " << e.what() << std::endl;
         db_ = nullptr;
     }
-
-    mog2_ = createBackgroundSubtractorMOG2(500, 16.0, true);
-    mog2_->setShadowValue(127);
 }
 
 // ---------- utils ----------
@@ -44,34 +47,34 @@ int SeatStateJudger::SeatTimer::getElapsedSeconds() {
 string SeatStateJudger::getISO8601Timestamp() {
     auto now = chrono::system_clock::now();
     auto in_time_t = chrono::system_clock::to_time_t(now);
+
     struct tm local_tm{};
 #ifdef _WIN32
     localtime_s(&local_tm, &in_time_t);
 #else
     localtime_r(&in_time_t, &local_tm);
 #endif
+
     char buf[32];
-    strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S", &local_tm);
-    auto ms = chrono::duration_cast<chrono::milliseconds>(now.time_since_epoch()) % 1000;
-    stringstream ss;
-    ss << buf << "." << setw(3) << setfill('0') << ms.count();
-    return ss.str();
+    strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &local_tm);
+
+    return string(buf);
 }
 
 string SeatStateJudger::msToISO8601(int64_t ts_ms) {
     time_t sec = static_cast<time_t>(ts_ms / 1000);
-    int ms = static_cast<int>(ts_ms % 1000);
     struct tm local_tm{};
 #ifdef _WIN32
     localtime_s(&local_tm, &sec);
 #else
     localtime_r(&sec, &local_tm);
 #endif
+
     char buf[32];
-    strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S", &local_tm);
-    stringstream ss;
-    ss << buf << "." << setw(3) << setfill('0') << ms;
-    return ss.str();
+    // 改成 "2024-01-15 11:30:00"
+    strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &local_tm);
+
+    return string(buf);
 }
 
 string SeatStateJudger::stateToStr(int status_enum) {
@@ -79,23 +82,6 @@ string SeatStateJudger::stateToStr(int status_enum) {
     if (status_enum == 1) return "Seated";
     if (status_enum == 2) return "Anomaly";
     return "Unseated";
-}
-
-Mat SeatStateJudger::preprocessFgMask(const Mat& frame, const Rect& roi) {
-    Mat fg_mask_full;
-    mog2_->apply(frame, fg_mask_full);
-    Mat fg_mask;
-    // keep only 255 (foreground), remove shadow(127)
-    inRange(fg_mask_full, Scalar(255), Scalar(255), fg_mask);
-    // safe ROI clamp
-    Rect r = roi & Rect(0, 0, frame.cols, frame.rows);
-    if (r.width <= 0 || r.height <= 0) {
-        return Mat::zeros(1,1, CV_8U);
-    }
-    Mat roi_mask = fg_mask(r);
-    Mat kernel = getStructuringElement(MORPH_RECT, Size(MORPH_KERNEL_SIZE, MORPH_KERNEL_SIZE));
-    morphologyEx(roi_mask, roi_mask, MORPH_OPEN, kernel);
-    return roi_mask.clone();
 }
 
 float SeatStateJudger::calculateIoU(const Rect& rect1, const Rect& rect2) {
@@ -352,7 +338,7 @@ bool SeatStateJudger::readJsonlFile(
     return frame_count > 0;
 }
 
-// ---------- processAData: 关键逻辑（保持你原始意图，但修复变量名/作用域） ----------
+// ---------- processAData: 关键逻辑----------
 void SeatStateJudger::processAData(
     const A2B_Data& a_data,
     const json& seat_j,
@@ -362,7 +348,7 @@ void SeatStateJudger::processAData(
     optional<B2C_SeatEvent>& out_event
 ) {
     // 初始化 state（基于 A2B_Data）
-    state.seat_id = a_data.seat_id;
+    state.seat_id = normalizeSeatId(a_data.seat_id);
     state.timestamp = a_data.timestamp;
     state.confidence = 0.90f;
     state.status_duration = 0;
@@ -371,12 +357,16 @@ void SeatStateJudger::processAData(
 
     int64_t current_ts_ms = seat_j.value("ts_ms", 0LL);
 
-    // 计算时间差
+    // 计算时间差（秒）
     int time_diff_sec = 0;
-    if (last_seat_ts_.find(a_data.seat_id) != last_seat_ts_.end() && current_ts_ms > 0) {
-        int64_t prev = last_seat_ts_[a_data.seat_id];
+    if (last_seat_ts_.find(state.seat_id) != last_seat_ts_.end() && current_ts_ms > 0) {
+        int64_t prev = last_seat_ts_[state.seat_id];
         time_diff_sec = static_cast<int>(std::max<int64_t>(0, (current_ts_ms - prev) / 1000));
     }
+
+    // --- 防护：避免单帧因 ts 跳变导致过大累加（例如帧丢失/延迟导致的一次性跳大）
+    const int MAX_INC_PER_FRAME = 5; // 每帧最多累加的秒数（可以根据实际调整）
+    if (time_diff_sec > MAX_INC_PER_FRAME) time_diff_sec = MAX_INC_PER_FRAME;
 
     // 读取检测信息
     int person_count = seat_j.value("person_count", 0);
@@ -388,18 +378,19 @@ void SeatStateJudger::processAData(
     if (occupancy_state == "PERSON" || person_count > 0) {
         current_status = 1;
         state.confidence = seat_j.value("person_conf", 0.95f);
-        anomaly_occupied_duration_[a_data.seat_id] = 0;
+        anomaly_occupied_duration_[state.seat_id] = 0;
     } else if (occupancy_state == "OBJECT_ONLY" || (object_count > 0 && person_count == 0)) {
-        anomaly_occupied_duration_[a_data.seat_id] += time_diff_sec;
-        if (anomaly_occupied_duration_[a_data.seat_id] >= ANOMALY_THRESHOLD_SECONDS) {
+        // 安全累加：用限制后的 time_diff_sec
+        anomaly_occupied_duration_[state.seat_id] += time_diff_sec;
+        if (anomaly_occupied_duration_[state.seat_id] >= ANOMALY_THRESHOLD_SECONDS) {
             current_status = 2;
             state.confidence = seat_j.value("object_conf", 0.85f);
             // create alert
             B2CD_Alert alert;
-            alert.alert_id = a_data.seat_id + "_" + a_data.timestamp;
-            alert.seat_id = a_data.seat_id;
+            alert.alert_id = state.seat_id + "_" + a_data.timestamp;
+            alert.seat_id = state.seat_id;
             alert.alert_type = "AnomalyOccupied";
-            alert.alert_desc = string("座位被物品占用，持续") + to_string(anomaly_occupied_duration_[a_data.seat_id]) + "秒";
+            alert.alert_desc = string("座位被物品占用，持续") + to_string(anomaly_occupied_duration_[state.seat_id]) + "秒";
             alert.timestamp = a_data.timestamp;
             alert.is_processed = false;
             alerts.push_back(alert);
@@ -407,133 +398,182 @@ void SeatStateJudger::processAData(
             current_status = 0;
         }
     } else {
-        anomaly_occupied_duration_[a_data.seat_id] = 0;
+        anomaly_occupied_duration_[state.seat_id] = 0;
         current_status = 0;
     }
 
     // 更新持续时间（基于上一状态 duration）
-    if (last_seat_status_.find(a_data.seat_id) != last_seat_status_.end() &&
-        last_seat_status_[a_data.seat_id] == current_status) {
-        state.status_duration = last_seat_status_duration_[a_data.seat_id] + time_diff_sec;
+    int prev_status = -1;
+    int prev_duration = 0;
+    auto it_status = last_seat_status_.find(state.seat_id);
+    if (it_status != last_seat_status_.end()) {
+        prev_status = it_status->second;
+        prev_duration = last_seat_status_duration_[state.seat_id];
+    }
+
+    if (prev_status != -1 && prev_status == current_status) {
+        state.status_duration = prev_duration + time_diff_sec;
     } else {
         state.status_duration = time_diff_sec;
     }
 
-    // 更新保留状态
-    state.status = static_cast<B2CD_State::SeatStatus>(current_status);
-    last_seat_ts_[a_data.seat_id] = current_ts_ms;
-    last_seat_status_[a_data.seat_id] = current_status;
-    last_seat_status_duration_[a_data.seat_id] = state.status_duration;
+    // ---- 在更新 last_* 之前判断是否发生状态变化 ----
+    bool status_changed = (prev_status == -1) ? true : (prev_status != current_status);
 
-    // 事件：当状态变化时生成事件
-    bool prev_exists = (last_seat_status_.find(a_data.seat_id) != last_seat_status_.end());
-    // Note: since we updated last_seat_status_ above, compare using temporary logic:
-    // For correctness, it's better to detect change by checking if previous duration was different.
-    // But here, we'll emit event when status_duration == time_diff_sec (i.e. state reset) OR when status changed.
-    // Implement simple change detection: we can check if state.status_duration == time_diff_sec and time_diff_sec>0 => changed.
-    // Simpler: create event if time_diff_sec >=0 and (state.status_duration == time_diff_sec || alerts.size()>0)
-    if (!prev_exists || state.status_duration == time_diff_sec || !alerts.empty()) {
+    // 更新保留状态（在判断之后）
+    state.status = static_cast<B2CD_State::SeatStatus>(current_status);
+    last_seat_ts_[state.seat_id] = current_ts_ms;
+    last_seat_status_[state.seat_id] = current_status;
+    last_seat_status_duration_[state.seat_id] = state.status_duration;
+
+    // 事件：只在状态发生变化或出现 alert 时生成事件（更稳健）
+    if (status_changed || !alerts.empty()) {
         B2C_SeatEvent event;
-        event.seat_id = a_data.seat_id;
+        event.seat_id = state.seat_id;
         event.state = stateToStr(current_status);
         event.timestamp = a_data.timestamp;
         event.duration_sec = state.status_duration;
         out_event = event;
+    } else {
+        out_event.reset();
     }
 
     // snapshot
-    out_snapshot.seat_id = a_data.seat_id;
+    out_snapshot.seat_id = state.seat_id;
     out_snapshot.state = stateToStr(current_status);
     out_snapshot.person_count = person_count;
     out_snapshot.timestamp = a_data.timestamp;
 }
 
 // ---------- run 主循环 ----------
-void SeatStateJudger::run(const string& jsonl_path) {
+
+
+void SeatStateJudger::run(const string& jsonl_dir) {
     resetNeedStoreFrameIndexes();
 
-    if (!jsonl_path.empty()) {
-        vector<vector<A2B_Data>> batch_a2b;
-        vector<vector<json>> batch_seat_j;
-        if (!readJsonlFile(jsonl_path, batch_a2b, batch_seat_j)) {
-            cout << "[Info] 未读取到 batch JSONL 文件" << endl;
-            return;
-        }
+    // 目录路径，如果传空就用默认目录
+    string dir_path = jsonl_dir.empty() ? "./out" : jsonl_dir;
+    fs::path folder(dir_path);
 
-        for (size_t idx = 0; idx < batch_a2b.size(); ++idx) {
-            auto& frame_a2b = batch_a2b[idx];
-            auto& frame_seat_j = batch_seat_j[idx];
-            if (frame_a2b.empty()) continue;
+    if (!fs::exists(folder) || !fs::is_directory(folder)) {
+        cout << "[Error] JSONL 目录不存在: " << dir_path << endl;
+        return;
+    }
 
-            int a_frame_index = frame_a2b[0].frame_id;
-            cout << "[Frame " << a_frame_index << "] 处理 " << frame_a2b.size() << " 个座位" << endl;
+    cout << "[Info] B 模块开始监听目录: " << dir_path << endl;
 
-            bool need_store_this_frame = false;
-            for (size_t si = 0; si < frame_a2b.size(); ++si) {
-                B2CD_State state;
-                vector<B2CD_Alert> alerts;
-                B2C_SeatSnapshot snapshot;
-                optional<B2C_SeatEvent> event;
+    // ------ 主循环 ------
+    while (true) {
+        try {
+            // 遍历 JSONL 文件
+            for (auto& entry : fs::directory_iterator(folder)) {
+                if (!entry.is_regular_file())
+                    continue;
 
-                processAData(frame_a2b[si], frame_seat_j[si], state, alerts, snapshot, event);
+                string file_path = entry.path().string();
+                string filename  = entry.path().filename().string();
 
-                if (event.has_value() && db_) {
-                    db_->insertSeatEvent(event->seat_id, event->state, event->timestamp, event->duration_sec);
+                // 跳过非 .jsonl 文件
+                if (entry.path().extension() != ".jsonl")
+                    continue;
+
+                // 防止重复处理
+                if (processed_files_.count(filename))
+                    continue;
+
+                cout << "[B] 发现新文件: " << filename << endl;
+
+                // ======== 读取 JSONL =========
+                vector<vector<A2B_Data>> batch_a2b;
+                vector<vector<json>> batch_seat_j;
+
+                bool ok = readJsonlFile(file_path, batch_a2b, batch_seat_j);
+                if (!ok) {
+                    cout << "[B] 文件读取失败，跳过: " << filename << endl;
+                    processed_files_.insert(filename);
+                    continue;
                 }
-                if (db_) {
-                    db_->insertSnapshot(snapshot.timestamp, snapshot.seat_id, snapshot.state, snapshot.person_count);
-                }
-                for (auto& a : alerts) {
-                    if (db_) db_->insertAlert(a.alert_id, a.seat_id, a.alert_type, a.alert_desc, a.timestamp, a.is_processed);
-                }
 
-                if (event.has_value() || !alerts.empty() || state.status != B2CD_State::UNSEATED) {
-                    need_store_this_frame = true;
-                }
+                // ======== 按帧处理 =========
+                for (size_t f = 0; f < batch_a2b.size(); ++f) {
+                    auto& frame_a2b  = batch_a2b[f];
+                    auto& frame_j    = batch_seat_j[f];
 
-                cout << "  Seat " << state.seat_id << " : " << stateToStr(static_cast<int>(state.status))
-                     << " dur=" << state.status_duration << " conf=" << fixed << setprecision(2) << state.confidence << endl;
-                if (!alerts.empty()) cout << "    Alert: " << alerts[0].alert_desc << endl;
-            }
+                    if (frame_a2b.empty())
+                        continue;
 
-            if (need_store_this_frame) {
-                need_store_frame_indexes_.insert(a_frame_index);
-                cout << "[Info] 标记帧 " << a_frame_index << " 需要入库" << endl;
-            }
-            cout << "-------------------------------------" << endl;
-            this_thread::sleep_for(chrono::milliseconds(100));
-        }
+                    int frame_id = frame_a2b[0].frame_id;
+                    cout << "[Frame " << frame_id << "] 处理 " << frame_a2b.size()
+                         << " 个座位" << endl;
 
-    } else {
-        // 监听 last_frame.jsonl
-        cout << "[Info] 未指定 JSONL 路径，监听 last_frame.jsonl ..." << endl;
-        while (true) {
-            vector<A2B_Data> a2b_list;
-            vector<json> seat_j_list;
-            if (readLastFrameData(a2b_list, seat_j_list)) {
-                cout << "[LastFrame] 读取到 " << a2b_list.size() << " 个座位，开始处理" << endl;
-                for (size_t i = 0; i < a2b_list.size(); ++i) {
-                    B2CD_State state;
-                    vector<B2CD_Alert> alerts;
-                    B2C_SeatSnapshot snapshot;
-                    optional<B2C_SeatEvent> event;
-                    processAData(a2b_list[i], seat_j_list[i], state, alerts, snapshot, event);
+                    bool need_store_this_frame = false;
 
-                    if (event.has_value() && db_) {
-                        db_->insertSeatEvent(event->seat_id, event->state, event->timestamp, event->duration_sec);
+                    for (size_t i = 0; i < frame_a2b.size(); ++i) {
+                        B2CD_State state;
+                        vector<B2CD_Alert> alerts;
+                        B2C_SeatSnapshot snapshot;
+                        optional<B2C_SeatEvent> event;
+
+                        processAData(frame_a2b[i], frame_j[i],
+                                     state, alerts, snapshot, event);
+
+                        // ====== 写入数据库 ======
+                        if (event.has_value() && db_) {
+                            db_->insertSeatEvent(
+                                event->seat_id,
+                                event->state,
+                                event->timestamp,
+                                event->duration_sec
+                            );
+                        }
+                        if (db_) {
+                            db_->insertSnapshot(
+                                snapshot.timestamp,
+                                snapshot.seat_id,
+                                snapshot.state,
+                                snapshot.person_count
+                            );
+                        }
+                        for (auto& a : alerts)
+                            if (db_) db_->insertAlert(
+                                a.alert_id, a.seat_id, a.alert_type,
+                                a.alert_desc, a.timestamp, a.is_processed
+                            );
+
+                        // ====== 日志打印 ======
+                        cout << "  Seat " << state.seat_id
+                             << " : " << stateToStr((int)state.status)
+                             << " dur=" << state.status_duration
+                             << " conf=" << fixed << setprecision(2)
+                             << state.confidence << endl;
+
+                        if (!alerts.empty())
+                            cout << "    Alert: " << alerts[0].alert_desc << endl;
+
+                        // 用于 C/D 决定是否保存该帧
+                        if (event.has_value() || !alerts.empty() ||
+                            state.status != B2CD_State::UNSEATED) {
+                            need_store_this_frame = true;
+                        }
                     }
-                    if (db_) {
-                        db_->insertSnapshot(snapshot.timestamp, snapshot.seat_id, snapshot.state, snapshot.person_count);
-                    }
-                    for (auto& a : alerts) if (db_) db_->insertAlert(a.alert_id, a.seat_id, a.alert_type, a.alert_desc, a.timestamp, a.is_processed);
 
-                    cout << "  Seat " << state.seat_id << " : " << stateToStr(static_cast<int>(state.status))
-                         << " dur=" << state.status_duration << " conf=" << fixed << setprecision(2) << state.confidence << endl;
-                    if (!alerts.empty()) cout << "    Alert: " << alerts[0].alert_desc << endl;
+                    if (need_store_this_frame) {
+                        need_store_frame_indexes_.insert(frame_id);
+                        cout << "[Info] 标记帧 " << frame_id << " 需要入库" << endl;
+                    }
+
+                    cout << "-------------------------------------" << endl;
                 }
-                cout << "-------------------------------------" << endl;
+
+                // 处理完就记录
+                processed_files_.insert(filename);
             }
-            this_thread::sleep_for(chrono::seconds(1));
         }
+        catch (const std::exception& e) {
+            cout << "[B] 处理 JSONL 文件时出现异常: " << e.what() << endl;
+        }
+
+        // 每 2 秒轮询目录
+        this_thread::sleep_for(chrono::seconds(2));
     }
 }
