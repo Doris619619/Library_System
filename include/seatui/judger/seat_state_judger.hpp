@@ -1,22 +1,23 @@
 #ifndef SEAT_STATE_JUDGER_HPP
 #define SEAT_STATE_JUDGER_HPP
-//#include "src/database/SeatDatabase.h"  // YZC：这是数据库头文件，记得修改路径，不然会报错！！！
-//#include "db_core/SeatDatabase.h"  
-#include "../../../src/db_core/SeatDatabase.h"
 
-#include "data_structures.hpp"
 #include <opencv2/opencv.hpp>
 #include <vector>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <optional>
-#include <json.hpp>
+#include <chrono>
+
+// 不直接 include SeatDatabase.h（避免 header 依赖循环），在 cpp 中 include 实现头
+class SeatDatabase; // forward declare
+
+#include <json.hpp> // third_party/nlohmann/json.hpp provided by CMake include dir
+
 using json = nlohmann::json;
 using namespace cv;
 using namespace std;
 
-// 配置参数
 const float IOU_THRESHOLD = 0.3f;
 const float FG_RATIO_THRESHOLD = 0.05f;
 const int ANOMALY_THRESHOLD_SECONDS = 120;
@@ -27,21 +28,23 @@ public:
     SeatStateJudger();
     ~SeatStateJudger() = default;
 
-    // 原有接口（不变）
+    // 主接口
     void processAData(
-        const A2B_Data& a_data,
+        const struct A2B_Data& a_data,
         const json& seat_j,
-        B2CD_State& state,
-        vector<B2CD_Alert>& alerts,
-        B2C_SeatSnapshot& out_snapshot,
-        optional<B2C_SeatEvent>& out_event
+        struct B2CD_State& state,
+        vector<struct B2CD_Alert>& alerts,
+        struct B2C_SeatSnapshot& out_snapshot,
+        optional<struct B2C_SeatEvent>& out_event
     );
+
     bool readLastFrameData(
-        vector<A2B_Data>& out_a2b_data_list,
+        vector<struct A2B_Data>& out_a2b_data_list,
         vector<json>& out_seat_j_list
     );
+
     void run(const std::string& jsonl_path = "");
-    string stateToStr(B2CD_State::SeatStatus status);
+    string stateToStr(int status_enum); // accepts B2CD_State::SeatStatus (int)
     string msToISO8601(int64_t ts_ms);
     bool readJsonlFile(
         const string& jsonl_path,
@@ -49,41 +52,39 @@ public:
         vector<vector<json>>& out_batch_seat_j
     );
 
-    // 向A同学返回需要入库的frame_index列表
     vector<int> getNeedStoreFrameIndexes() const {
         return vector<int>(need_store_frame_indexes_.begin(), need_store_frame_indexes_.end());
     }
 
-    // 重置存储的帧索引（多次运行时避免重复）
     void resetNeedStoreFrameIndexes() {
         need_store_frame_indexes_.clear();
     }
 
 private:
-    // 原有存储变量（不变）
+    // 状态持久化容器（类成员，统一管理）
     unordered_map<string, int64_t> last_seat_ts_;
-    unordered_map<string, B2CD_State::SeatStatus> last_seat_status_;
     unordered_map<string, int> last_seat_status_duration_;
     unordered_map<string, int> anomaly_occupied_duration_;
+    unordered_map<string, int> last_seat_status_; // store as int (enum value)
 
-    // 存储需要入库的frame_index（视频帧唯一ID）
     unordered_set<int> need_store_frame_indexes_;
 
-    // 新增：数据库引用
-    SeatDatabase& db_;
-    
+    // Database 引用（在 cpp 中初始化）
+    SeatDatabase* db_; // pointer to avoid ctor-order issues
+
+    // 辅助工具
     class SeatTimer {
     public:
         bool is_running = false;
         chrono::steady_clock::time_point start_time;
         int getElapsedSeconds();
     };
+    unordered_map<string, SeatTimer> seat_timers_;
+
+    Ptr<BackgroundSubtractorMOG2> mog2_;
     Mat preprocessFgMask(const Mat& frame, const Rect& roi);
     float calculateIoU(const Rect& rect1, const Rect& rect2);
     string getISO8601Timestamp();
-    Ptr<BackgroundSubtractorMOG2> mog2_;
-    unordered_map<string, SeatTimer> seat_timers_;
-    unordered_map<string, string> last_seat_states_;
 };
 
 #endif // SEAT_STATE_JUDGER_HPP
