@@ -375,7 +375,7 @@ void SeatStateJudger::processAData(
     int time_diff_sec = 0;
     if (last_seat_ts_.find(a_data.seat_id) != last_seat_ts_.end() && current_ts_ms > 0) {
         int64_t prev = last_seat_ts_[a_data.seat_id];
-        time_diff_sec = static_cast<int>(max<int64_t>(0, (current_ts_ms - prev) / 1000));
+        time_diff_sec = static_cast<int>(cv::Mat_<double>(0, (current_ts_ms - prev) / 1000));
     }
 
     // 读取检测信息
