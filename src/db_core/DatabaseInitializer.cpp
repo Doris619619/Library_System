@@ -60,17 +60,6 @@ bool DatabaseInitializer::insertSampleSeats() {
         database_.insertSeat("A3",  300, 100, 50, 50);
         database_.insertSeat("A4",  400, 100, 50, 50);
 
-        // 小组讨论区 (gruop)
-        //database_.insertSeat("B1",  100, 200, 60, 60);
-        //database_.insertSeat("B2",  200, 200, 60, 60);
-        //database_.insertSeat("B3",  300, 200, 60, 60);
-
-        // 电脑区 ("Computer")
-        //database_.insertSeat("C1", 100, 300, 70, 60);
-        //database_.insertSeat("C2", 200, 300, 70, 60);
-        //database_.insertSeat("C3", 300, 300, 70, 60);
-        //database_.insertSeat("C4", 400, 300, 70, 60);
-
         return true;
 
     } catch (const std::exception& e) {
@@ -88,14 +77,12 @@ bool DatabaseInitializer::insertSampleEvents() {
         // 插入一些历史事件
         database_.insertSeatEvent("A1", "Seated", two_hours_ago, 3600);
         database_.insertSeatEvent("A2", "Unseated", two_hours_ago, 0);
-        //database_.insertSeatEvent("B1", "Anomaly", one_hour_ago, 1800);
 
         // 插入当前状态事件
         database_.insertSeatEvent("A1", "Seated", current_time, 0);
         database_.insertSeatEvent("A2", "Seated", current_time, 0);
         database_.insertSeatEvent("A3", "Unseated", current_time, 0);
-        //database_.insertSeatEvent("B1", "Anomaly", current_time, 0);
-        //database_.insertSeatEvent("C1", "Seated", current_time, 0);
+
 
         return true;
 
