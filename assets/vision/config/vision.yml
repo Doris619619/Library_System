@@ -1,10 +1,10 @@
 # Vision configuration file
-seats_json: "config/poly_simple_seats.json"
+seats_json: "assets/vision/config/demo_seats.json"
 model_path: "data/models/person01.onnx"  # fine-tuned single-class person model
-vision_yaml: "config/vision.yml"
+vision_yaml: "assets/vision/config/vision.yml"
 log_dir: "logs"
 snapshot_dir: "cache/snap"
-states_output: "runtime/seat_states.jsonl"
+states_output: "out/000000.jsonl"
 annotated_frames_dir: "runtime/frames"
 
 input_w: 640
