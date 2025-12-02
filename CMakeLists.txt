@@ -158,6 +158,7 @@ if(BUILD_VISION)
     src/vision_core/Snapshotter.cpp
     src/vision_core/Types.cpp
     src/vision_core/VisionA.cpp
+    src/vision_core/VisionClient.cpp
   )
 
   target_include_directories(vision
