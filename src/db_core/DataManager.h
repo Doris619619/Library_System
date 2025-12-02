@@ -38,3 +38,35 @@ private:
     QTimer* refreshTimer_;
     static DataManager* instance_;
 };
+
+public slots:
+    void broadcastDataUpdates();
+
+private:
+    QWebSocketServer* wsServer_;
+    QList<QWebSocket*> clients_;
+};
+
+// 在数据更新时广播
+void DataManager::onRefreshTimer() {
+    auto seatStatus = getCurrentSeatStatus();
+    auto basicStats = getCurrentBasicStats();
+    
+    // 发送信号给UI
+    emit seatStatusUpdated(seatStatus);
+    emit basicStatsUpdated(basicStats);
+    
+    // 通过WebSocket广播给所有连接的客户端
+    broadcastDataUpdates();
+}
+
+void DataManager::broadcastDataUpdates() {
+    QJsonObject data;
+    data["type"] = "seat_update";
+    data["timestamp"] = QDateTime::currentDateTime().toString(Qt::ISODate);
+    data["stats"] = QJsonObject::fromVariantMap(getCurrentBasicStats());
+    
+    QJsonDocument doc(data);
+    for (auto* client : clients_) {
+        client->sendTextMessage(doc.toJson());
+    }
