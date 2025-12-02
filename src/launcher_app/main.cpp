@@ -115,8 +115,8 @@ int main(int argc, char *argv[]) {
     QApplication app(argc, argv);
     
     // C部分——打开数据库（使用你代码中的默认路径与建表逻辑）
-    auto& db = SeatDatabase::getInstance();  // 单例默认路径见你的头文件
-    db.initialize();
+    //auto& db = SeatDatabase::getInstance();  // 单例默认路径见你的头文件
+    //db.initialize();
     
     // 建议改为 true：当最后一个窗口关闭时退出应用
     app.setQuitOnLastWindowClosed(true);
