@@ -1,8 +1,5 @@
 #pragma once
-//#include "D:/Coding/Cpp/Projects/CSC3002Proj/Vision_Core/thirdparty/onnxruntime/include/onnxruntime_cxx_api.h"
-//#include "third_party/onnxruntime/include/onnxruntime_cxx_api.h"
-#include "../../../third_party/onnxruntime/include/onnxruntime_cxx_api.h"
-
+#include "D:/Coding/Cpp/Projects/CSC3002Proj/Vision_Core/thirdparty/onnxruntime/include/onnxruntime_cxx_api.h"
 #include <opencv2/opencv.hpp>
 #include <opencv2/core.hpp>
 #include <vector>

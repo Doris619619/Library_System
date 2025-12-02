@@ -8,12 +8,12 @@ namespace vision {
 struct VisionConfig {
     // ===================== 字段fields ===================== //
     
-    std::string seats_json   = "config/poly_simple_seats.json";//test_seats.json";//"config/seats.json";             // seats ROI configs
-    std::string model_path   = "data/models/yolov8n_640.onnx";  // available onnx models path
-    std::string vision_yaml  = "config/vision.yml";             // config file self path (yaml file contains the overall configuration for VisionA)
+    std::string seats_json   = "assets/vision/config/demo_seats.json";//test_seats.json";//"config/seats.json";             // seats ROI configs
+    std::string model_path   = "assets/vision/weights/person01.onnx";  // available onnx models path
+    std::string vision_yaml  = "assets/vision/config/vision.yml";             // config file self path (yaml file contains the overall configuration for VisionA)
     std::string log_dir      = "logs";
     std::string snapshot_dir = "cache/snap";
-    std::string states_output = "runtime/seat_states.jsonl";    // 每帧座位状态输出(.jsonl)
+    std::string states_output = "runtime/seat_states.jsonl";    // (当前实际在./out/000000.jsonl内给出对应帧座位状态输出) 每帧座位状态输出(.jsonl)
     std::string annotated_frames_dir = "runtime/frames";        // 帧级标注输出目录(原始图 + 画框 + 座位ROI + 状态)
 
     // 模型输入尺寸
@@ -25,11 +25,11 @@ struct VisionConfig {
     * NMS:   多框重叠时仅保留置信度最高者，避免单人连续多框
     * IoU:   对于重复方框，计算其交并比(IoU = |A and B|/|A or B|)以决定是否合并或归属(保高分抑低分)
     */
-    float conf_thres_person      = 0.35f; // 人框置信度阈值, box_conf > ~ 才算人
-    float conf_thres_person_low  = 0.30f; // 人框低置信, 高低阈值之间的边缘人框需借助其它条件判断
-    float conf_thres_object      = 0.40f; // 物框置信度阈值, box_conf > ~ 才算物
-    float nms_iou                = 0.50f; // overlapping box IoU thres
-    float iou_seat_intersect     = 0.20f; // 框与座位ROI归属IoU thres, IoU > ~ 才算在座位内
+    float conf_thres_person      = 0.50f; // 人框置信度阈值, box_conf > ~ 才算人
+    float conf_thres_person_low  = 0.40f; // 人框低置信, 高低阈值之间的边缘人框需借助其它条件判断
+    float conf_thres_object      = 0.50f; // 物框置信度阈值, box_conf > ~ 才算物
+    float nms_iou                = 0.55f; // overlapping box IoU thres
+    float iou_seat_intersect     = 0.40f; // 框与座位ROI归属IoU thres, IoU > ~ 才算在座位内
     float mog2_fg_ratio_thres    = 0.08f; // 前景占比兜底阈值
 
     // 快照策略

@@ -7,10 +7,10 @@
 #include <algorithm>
 #include <set>
 #include <opencv2/opencv.hpp>
-#include "VisionA.h"
-#include "Publish.h"
-#include "Config.h"
-#include "Types.h"
+#include "vision/VisionA.h"
+#include "vision/Publish.h"
+#include "vision/Config.h"
+#include "vision/Types.h"
 
 namespace vision {
 
@@ -79,7 +79,7 @@ public:
         VisionA& vision,
         const VisionConfig& cfg,
         std::ofstream& ofs,
-        double sampleFps = 0.0,
+        double sampleFps = 0.5,
         int startFrame = 0,
         int endFrame = -1,
         size_t max_process_frames = 500
@@ -100,7 +100,8 @@ public:
     static size_t bulkExtraction(
         const std::string& video_path,
         double sample_fps, 
-        const std::string& out_dir = "./data/frames/",
+        size_t max_process_frames = (size_t)500,
+        const std::string& out_dir = "./assets/vision/extracted/",
         int start_frame = 0,
         int end_frame = -1,
         int jpeg_quality = 95,
@@ -130,10 +131,10 @@ public:
         const VisionConfig& cfg,                      // used by onFrame
         std::ofstream& ofs,
         VisionA& vision,
-        double sample_fps,                            // frames args
+        double sample_fps = 0.5,                 // frames args
         int start_frame = 0,
         int end_frame = -1,
-        const std::string& img_dir = "./data/frames/",
+        const std::string& img_dir = "./assets/vision/extracted/",
         size_t max_process_frames = 500,              // use user input --max
         int jpeg_quality = 95,
         const std::string& filename_prefix = "f_"
@@ -160,12 +161,26 @@ public:
         const VisionConfig& cfg,
         VisionA& vision,
         size_t max_process_frames = 500,
-        int sample_fp100 = 20,
+        int sample_fp100 = 50,
         int original_total_frames = 0
     );
 
     // ==================== Utils: Sampling, Counting, Checking and Mapping ===========================
 
+    // zero pad 6 digits
+    static inline std::string zeroPad6(int n) {
+        char buf[8];
+        std::snprintf(buf, sizeof(buf), "%06d", std::max(0, n));
+        return std::string(buf);
+    }
+
+    // get frame jsonl path
+    static inline std::string getFrameJsonlPath(const std::string& out_dir, int frame_index) {
+        char name[16];
+        std::snprintf(name, sizeof(name), "%s.jsonl", zeroPad6(frame_index).c_str());
+        return (std::filesystem::path(out_dir) / name).string();
+    }
+    
     // count files in specific directory
     static size_t countFilesInDir(const std::string& dir_path);
 
@@ -190,8 +205,12 @@ public:
     // judge input type (directory, video file, image file, unknown)
     static InputType judgeInputType(const std::string& file_path_string);
 
-//private:
+    // sizeParse
 
+
+// private:
+//     struct Impl;
+//     std::unique_ptr<Impl> impl_;
 };
 
 } // namespace vision

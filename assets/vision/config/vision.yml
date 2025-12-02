@@ -1,6 +1,10 @@
 # Vision configuration file
 seats_json: "assets/vision/config/demo_seats.json"
+<<<<<<< HEAD
 model_path: "data/models/person01.onnx"  # fine-tuned single-class person model
+=======
+model_path: "assets/vision/weights/person01.onnx"  # fine-tuned single-class person model
+>>>>>>> 5910e76 (Finished vision new part packing-in)
 vision_yaml: "assets/vision/config/vision.yml"
 log_dir: "logs"
 snapshot_dir: "cache/snap"

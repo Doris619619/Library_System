@@ -1,6 +1,4 @@
 // 简化版本的 VisionA：当前仅加载座位并返回 UNKNOWN 状态
-
-/*
 #include "vision/VisionA.h"
 #include "vision/Publish.h"
 #include "vision/SeatRoi.h"
@@ -9,19 +7,7 @@
 #include "vision/OrtYolo.h"
 #include "vision/Mog2.h"
 #include "vision/Snapshotter.h"
-
-*/
-
-#include "seatui/vision/VisionA.h"
-#include "seatui/vision/Publish.h"
-#include "seatui/vision/SeatRoi.h"
-#include "seatui/vision/Types.h"
-#include "seatui/vision/Config.h"
-#include "seatui/vision/OrtYolo.h"
-#include "seatui/vision/Mog2.h"
-#include "seatui/vision/Snapshotter.h"
-
-
+#include "vision/Nms.h"
 #include <opencv2/imgproc.hpp>
 #include <fstream>
 #include <chrono>
@@ -154,9 +140,15 @@ namespace vision {
             dets.push_back(b);
         }
 
-        std::cout << "[VisionA] Inference completed. Detected " << dets.size() << " objects.\n";
+        // 3. NMS：按类别做 NMS，减少重叠框
+        const float nms_iou = std::max(0.f, std::min(1.f, impl_->cfg.nms_iou));
+        if (!dets.empty() && nms_iou > 0.f) {
+            dets = nmsClasswise(dets, nms_iou);
+        }
 
-        // 3. 人与物简易分类
+        std::cout << "[VisionA] Inference completed. Detected " << dets.size() << " objects (after NMS).\n";
+
+        // 4. 人与物简易分类
         std::vector<BBox> persons, objects;   // persons boxes and objects boxes
         for (auto& b : dets) {
             if (b.cls_name == "person") persons.push_back(b);
@@ -169,7 +161,7 @@ namespace vision {
         impl_->last_persons = persons;
         impl_->last_objects = objects;
 
-        // 4. 座位归属: 根据多边形包含或 IoU 判定座位内元素
+        // 5. 座位归属: 根据多边形包含或 IoU 判定座位内元素
         auto iouSeat = [](const cv::Rect& seat, const cv::Rect& box) {
             int ix = std::max(seat.x, box.x);
             int iy = std::max(seat.y, box.y);
@@ -200,7 +192,7 @@ namespace vision {
             sfs.seat_id = each_seat.seat_id;
             sfs.ts_ms = ts_ms;
             sfs.frame_index = frame_index;
-            sfs.seat_roi = each_seat.rect;
+            sfs.seat_roi = each_seat.rect; 
             sfs.seat_poly = each_seat.poly;  // 保存多边形信息
             
             // 判断使用多边形还是矩形
@@ -254,6 +246,7 @@ namespace vision {
                     sfs.object_conf_max = std::max(sfs.object_conf_max, o.conf);
                 }
             }
+            
             // 前景占比：多边形优先
             if (use_poly) {
                 sfs.fg_ratio = Mog2Manager::ratioInPoly(fg_mask, each_seat.poly);
@@ -301,6 +294,7 @@ namespace vision {
             }
             out.push_back(std::move(sfs));
         }
+        
         auto t1 = std::chrono::high_resolution_clock::now();
         int total_ms = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count());
         for (auto& each_sfs : out) each_sfs.t_post_ms = total_ms; // 简化: 全流程耗时
