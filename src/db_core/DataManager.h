@@ -10,7 +10,7 @@ public:
     static DataManager* instance();
     
     // 数据库连接
-    bool connectToDatabase(const QString& dbPath = "../seating_system.db");
+    bool connectToDatabase(const QString& dbPath = "../output/seating_system.db");
     
     // 数据获取方法（供UI调用）
     Q_INVOKABLE QVariantList getCurrentSeatStatus();
