@@ -14,7 +14,7 @@
 class SeatDatabase {
 public:
     // 单例模式获取实例
-    static SeatDatabase& getInstance(const std::string& db_path = "../output/seating_system.db");
+    static SeatDatabase& getInstance(const std::string& db_path = "../out/seating_system.db");
     
     // 禁止拷贝和赋值
     SeatDatabase(const SeatDatabase&) = delete;
