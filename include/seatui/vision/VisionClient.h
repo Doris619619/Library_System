@@ -1,8 +1,8 @@
-#include "./include/seatui/vision/VisionA.h"
-#include "./include/seatui/vision/Publish.h"
-#include "./include/seatui/vision/Config.h"
-#include "./include/seatui/vision/Types.h"
-#include "./include/seatui/vision/FrameProcessor.h"
+#include "VisionA.h"
+#include "Publish.h"
+#include "Config.h"
+#include "Types.h"
+#include "FrameProcessor.h"
 #include <opencv2/opencv.hpp>
 #include <filesystem>
 #include <string>
