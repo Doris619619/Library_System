@@ -1,16 +1,17 @@
 // 简化版本的 VisionA：当前仅加载座位并返回 UNKNOWN 状态
-#include "vision/VisionA.h"
-#include "vision/Publish.h"
-#include "vision/SeatRoi.h"
-#include "vision/Types.h"
-#include "vision/Config.h"
-#include "vision/OrtYolo.h"
-#include "vision/Mog2.h"
-#include "vision/Snapshotter.h"
-#include "vision/Nms.h"
+#include "seatui/vision/VisionA.h"
+#include "seatui/vision/Publish.h"
+#include "seatui/vision/SeatRoi.h"
+#include "seatui/vision/Types.h"
+#include "seatui/vision/Config.h"
+#include "seatui/vision/OrtYolo.h"
+#include "seatui/vision/Mog2.h"
+#include "seatui/vision/Snapshotter.h"
+#include "seatui/vision/Nms.h"
 #include <opencv2/imgproc.hpp>
 #include <fstream>
 #include <chrono>
+
 
 namespace vision {
 
