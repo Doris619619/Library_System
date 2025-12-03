@@ -7,10 +7,12 @@
 #include <algorithm>
 #include <set>
 #include <opencv2/opencv.hpp>
-#include "vision/VisionA.h"
-#include "vision/Publish.h"
-#include "vision/Config.h"
-#include "vision/Types.h"
+
+#include "VisionA.h"
+#include "Publish.h"
+#include "Config.h"
+#include "Types.h"
+
 
 namespace vision {
 
