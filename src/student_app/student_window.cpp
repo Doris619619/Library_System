@@ -43,6 +43,13 @@
 #include <QFileInfo>
 #include <QCoreApplication>
 
+
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
+#include <QJsonParseError>
+
+
 //文件读取
 static QString locateBooksFile() {
     // 1) 运行目录 /Input/books.txt  —— CMake 已拷贝
@@ -52,6 +59,7 @@ static QString locateBooksFile() {
 
     // 2) 兼容某些构建目录层级（上一层、上两层）
     candidates << QDir(appDir + "/..").filePath("Input/books.txt");
+
     candidates << QDir(appDir + "/../..").filePath("Input/books.txt");
 
     // 3) 当前工作目录（少数IDE会把 cwd 设置为别处）
@@ -83,6 +91,8 @@ static QPushButton* makeSideBtn(const QString& text, QWidget* parent) {
     return b;
 }
 
+
+/*
 StudentWindow::StudentWindow(QWidget* parent) : QMainWindow(parent) {
     setWindowTitle(u8"SeatUI 学生端");
     resize(1000, 680);
@@ -165,8 +175,100 @@ StudentWindow::StudentWindow(QWidget* parent) : QMainWindow(parent) {
     connect(btnLive, &QPushButton::clicked, this, &StudentWindow::gotoLive);
     connect(btnBook, &QPushButton::clicked, this, &StudentWindow::gotoBookSearch);
 
+
+    // 构造里：监听消息
     initWsClient();
 }
+
+
+*/
+
+StudentWindow::StudentWindow(QWidget* parent) : QMainWindow(parent) {
+    setWindowTitle(u8"SeatUI 学生端");
+    resize(1000, 680);
+
+    // ===== 左侧侧边栏 =====
+    auto side = new QFrame(this);
+    side->setFixedWidth(190);
+    side->setStyleSheet("QFrame{ background:#0f172a; border-right:1px solid #1f2937; }");
+    auto sideLy = new QVBoxLayout(side);
+    sideLy->setContentsMargins(12,16,12,16);
+    sideLy->setSpacing(10);
+
+    // 顶部"返回登录"（非互斥按钮，不高亮选中状态）
+    auto btnBack = new QPushButton(u8"← 返回登录", side);
+    btnBack->setCursor(Qt::PointingHandCursor);
+    btnBack->setStyleSheet(
+        "QPushButton{ text-align:left; padding:8px 12px; border:0; border-radius:8px; "
+        "  color:#cbd5e1; background:rgba(255,255,255,0.04);} "
+        "QPushButton:hover{ background:rgba(255,255,255,0.10);} "
+        "QPushButton:pressed{ background:rgba(37,99,235,0.25); color:#fff; }"
+        );
+    sideLy->addWidget(btnBack);
+
+    auto title = new QLabel(u8"学生端", side);
+    title->setStyleSheet("color:#cbd5e1; font-weight:600; padding:4px;");
+    sideLy->addWidget(title);
+
+    btnDash = makeSideBtn(u8"🏠 仪表盘", side);
+    btnNav  = makeSideBtn(u8"🧭 导航", side);
+    btnHeat = makeSideBtn(u8"🔥 热力图", side);
+    btnHelp = makeSideBtn(u8"🆘 一键求助", side);
+    btnLive = makeSideBtn(u8"💺 座位实况", side);
+    btnBook = makeSideBtn(u8"📚 图书查询", side);
+
+    // 按钮互斥
+    btnDash->setAutoExclusive(true);
+    btnNav->setAutoExclusive(true);
+    btnHeat->setAutoExclusive(true);
+    btnHelp->setAutoExclusive(true);
+    btnLive->setAutoExclusive(true);
+    btnBook->setAutoExclusive(true);
+
+    sideLy->addWidget(btnDash);
+    sideLy->addWidget(btnNav);
+    sideLy->addWidget(btnHeat);
+    sideLy->addWidget(btnHelp);
+    sideLy->addWidget(btnLive);
+    sideLy->addWidget(btnBook);
+    sideLy->addStretch();
+
+    // ===== 右侧页面区（堆叠）=====
+    pages = new QStackedWidget(this);
+    pages->addWidget(buildDashboardPage());   // 0
+    pages->addWidget(buildNavigationPage());  // 1
+    pages->addWidget(buildHeatmapPage());     // 2
+    pages->addWidget(buildHelpPage());        // 3
+    pages->addWidget(buildLivePage());        // 4
+    pages->addWidget(buildBookSearchPage());  // 5 - 书籍搜索页面
+
+    // 默认落在仪表盘
+    pages->setCurrentIndex(0);
+    btnDash->setChecked(true);
+
+    // 根布局：左侧栏 + 右侧页面
+    auto central = new QWidget(this);
+    auto root = new QHBoxLayout(central);
+    root->setContentsMargins(0,0,0,0);
+    root->setSpacing(0);
+    root->addWidget(side);
+    root->addWidget(pages, 1);
+    setCentralWidget(central);
+
+    // 侧边栏信号
+    connect(btnBack, &QPushButton::clicked, this, &StudentWindow::onBackToLogin);
+    connect(btnDash, &QPushButton::clicked, this, &StudentWindow::gotoDashboard);
+    connect(btnNav,  &QPushButton::clicked, this, &StudentWindow::gotoNavigation);
+    connect(btnHeat, &QPushButton::clicked, this, &StudentWindow::gotoHeatmap);
+    connect(btnHelp, &QPushButton::clicked, this, &StudentWindow::gotoHelp);
+    connect(btnLive, &QPushButton::clicked, this, &StudentWindow::gotoLive);
+    connect(btnBook, &QPushButton::clicked, this, &StudentWindow::gotoBookSearch);
+
+    // 构造时不要直接connect ws_，应该通过 initWsClient() 来处理
+    initWsClient();
+}
+
+
 
 /* ---------- 页面构建 ---------- */
 
@@ -703,6 +805,8 @@ void StudentWindow::onResetHelp() {
     helpImgMime_.clear();
 }
 
+
+/*
 void StudentWindow::onSubmitHelp() {
     const QString desc = helpText_->toPlainText().trimmed();
 
@@ -738,7 +842,46 @@ void StudentWindow::onSubmitHelp() {
     // 清空
     onResetHelp();
 }
+*/
+void StudentWindow::onSubmitHelp() {
+    const QString desc = helpText_->toPlainText().trimmed();
 
+    // 确保至少有文本或图片
+    if (desc.isEmpty() && helpImgBytes_.isEmpty()) {
+        CardDialog(u8"内容为空", u8"请至少填写文字或选择一张图片。", this).exec();
+        return;
+    }
+
+    // 构建 JSON 数据
+    QJsonObject root;
+    root["type"] = "student_help";
+    root["user"] = "student";  // 可以替换为登录用户名
+    root["description"] = desc;
+    root["created_at"] = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+
+    if (!helpImgBytes_.isEmpty()) {
+        QJsonObject img;
+        img["filename"] = helpImgFilename_.isEmpty() ? "help.png" : helpImgFilename_;
+        img["mime"] = helpImgMime_.isEmpty() ? "image/png" : helpImgMime_;
+        img["base64"] = QString::fromLatin1(helpImgBytes_.toBase64());
+        root["image"] = img;
+    }
+
+    const QByteArray payload = QJsonDocument(root).toJson(QJsonDocument::Compact);
+
+    // 发送给管理员端
+    wsSend(payload);
+
+    // 提示用户已提交
+    CardDialog(u8"已提交", u8"你的求助信息已发送，管理员会尽快处理。", this).exec();
+
+    // 清空内容
+    onResetHelp();
+}
+
+
+
+/*
 void StudentWindow::initWsClient() {
     ws_ = new QWebSocket(QString(), QWebSocketProtocol::VersionLatest, this);
     ws_->ignoreSslErrors();  // 非 TLS
@@ -767,6 +910,85 @@ void StudentWindow::initWsClient() {
     // 首次连接
     ws_->open(QUrl(QStringLiteral("ws://127.0.0.1:12345")));
 }
+*/
+
+void StudentWindow::initWsClient() {
+    ws_ = new QWebSocket(QString(), QWebSocketProtocol::VersionLatest, this);
+    ws_->ignoreSslErrors();  // 处理非 TLS 连接
+    wsReady_ = false;
+
+    connect(ws_, &QWebSocket::connected, this, [this]{
+        wsReady_ = true;
+        // 握手发送角色信息
+        ws_->sendTextMessage(QStringLiteral(R"({"type":"hello","role":"student"})"));
+    });
+
+    connect(ws_, &QWebSocket::disconnected, this, [this]{
+        wsReady_ = false;
+        // 简单重连（1秒后重连）
+        QTimer::singleShot(1000, this, [this]{
+            ws_->open(QUrl(QStringLiteral("ws://127.0.0.1:12345")));
+        });
+    });
+
+    connect(ws_, QOverload<QAbstractSocket::SocketError>::of(&QWebSocket::errorOccurred),
+            this, [this](auto){
+                // 错误时重连
+                QTimer::singleShot(1000, this, [this]{
+                    if (ws_ && !wsReady_) ws_->open(QUrl(QStringLiteral("ws://127.0.0.1:12345")));
+                });
+            });
+
+    // WebSocket 连接成功后
+    connect(ws_, &QWebSocket::textMessageReceived, this, [this](const QString& msg) {
+        QJsonParseError error;
+        auto doc = QJsonDocument::fromJson(msg.toUtf8(), &error);
+
+        // 如果解析出错或不是有效的 JSON 对象，则返回
+        if (error.error != QJsonParseError::NoError || !doc.isObject()) return;
+
+        const auto obj = doc.object();
+
+        // 如果接收到的是 seat_snapshot 类型的消息
+        if (obj.value("type").toString() == "seat_snapshot") {
+            const auto arr = obj.value("items").toArray();
+
+            // 遍历每个座位的状态
+            for (const auto& item : arr) {
+                if (!item.isObject()) continue;
+                const auto o = item.toObject();
+                const QString id = o.value("seat_id").toString();
+                const int st = o.value("state").toInt(0);
+                const QString since = o.value("since").toString();
+
+                // 更新 UI：更新座位状态（只保留这一行，删除表格相关代码）
+                liveSetCell(id, st, since);
+            }
+        }
+
+
+        // 在 if (obj.value("type").toString() == "seat_snapshot") { ... } 之后补一个 else if
+        else if (obj.value("type").toString() == "seat_update") {
+            const auto arr = obj.value("seats").toArray();  // 注意是 seats
+            for (const auto& it : arr) {
+                if (!it.isObject()) continue;
+                const auto o = it.toObject();
+                const QString id = o.value("id").toString();             // id
+                int st = 0;
+                // DB 发来是字符串："Seated"/"Unseated"/"Anomaly"
+                const QString s = o.value("state").toString();
+                if (s == "Seated") st = 1;
+                else if (s == "Anomaly") st = 2;
+                const QString since = o.value("last_update").toString(); // last_update
+                liveSetCell(id, st, since);
+            }
+        }
+
+    });
+
+    // 首次连接
+    ws_->open(QUrl(QStringLiteral("ws://127.0.0.1:12345")));
+}
 
 void StudentWindow::wsSend(const QByteArray& utf8Json) {
     if (ws_ && wsReady_) {
@@ -776,6 +998,8 @@ void StudentWindow::wsSend(const QByteArray& utf8Json) {
         CardDialog(u8"未连接", u8"尚未连接管理员端（WS）。稍后将自动重试。", this).exec();
     }
 }
+
+
 
 // 小工具：状态 → 文案
 static QString demoStateText(int s){
@@ -793,6 +1017,8 @@ static QString demoCellCss(int s){
     return       "QFrame{ background:#101319; border:1px solid #374151; border-radius:12px; } QLabel{ color:#cbd5e1; }";        // 灰
 }
 
+
+/*
 void StudentWindow::liveSetCell(const QString& id, int state, const QString& sinceIso){
     // 把 "S1" → 1，索引=1-1=0
     bool ok=false; int idx = id.mid(1).toInt(&ok);
@@ -806,3 +1032,24 @@ void StudentWindow::liveSetCell(const QString& id, int state, const QString& sin
         box->setStyleSheet(demoCellCss(state));
     }
 }
+
+*/
+
+//liveSetCell 函数负责更新座位实况页面的座位卡片显示。
+void StudentWindow::liveSetCell(const QString& id, int state, const QString& sinceIso) {
+    bool ok = false;
+    int idx = id.mid(1).toInt(&ok);
+    if (!ok || idx < 1 || idx > 4 || idx > liveCells_.size()) return;
+
+    QLabel* lab = liveCells_[idx - 1];
+    lab->setText(demoStateText(state) + "\n" + sinceIso);
+
+    // 更新外层卡片的颜色
+    if (auto box = qobject_cast<QFrame*>(lab->parentWidget())) {
+        box->setStyleSheet(demoCellCss(state));
+    }
+}
+
+
+
+
