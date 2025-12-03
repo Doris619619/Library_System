@@ -1,38 +1,31 @@
 cmake_minimum_required(VERSION 3.24)
 project(Library_System LANGUAGES CXX)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# ===================== 新增：编译器特性设置 =====================
+# ===================== 编译器特性设置 =====================
 if(MSVC)
-    # MSVC特定设置
-    add_compile_options(/utf-8)  # 强制UTF-8
-    add_compile_options(/Zc:__cplusplus)  # 正确报告C++标准
-    add_compile_options(/permissive-)  # 标准一致性模式
-
-    # 可选：禁用特定警告（如果需要）
-    # add_compile_options(/wd4819)  # 禁用编码警告（如果仍有警告）
-    # add_compile_options(/wd4996)  # 禁用安全警告
-
-    # 设置字符集
+    add_compile_options(/utf-8)
+    add_compile_options(/Zc:__cplusplus)
+    add_compile_options(/permissive-)
     add_compile_definitions(_UNICODE UNICODE)
 else()
-    # GCC/Clang设置
     add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
-
-# ===================== 1) Qt（前端基准） =====================
-find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets Charts WebSockets)
+# ===================== Qt（前端基准） =====================
+find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets Charts WebSockets Network)
 qt_standard_project_setup()
 
-# ===================== 2) 选项开关（避免无依赖时卡住） =====================
-option(BUILD_VISION "Build vision (OpenCV/ONNX/yaml-cpp/spdlog)" ON)
-option(BUILD_JUDGER "Build judger (seat_state_judger)" ON)
-option(BUILD_DB     "Build database core (SQLiteCpp/sqlite3)" ON)
-option(BUILD_JUDGER_CLI "Build standalone CLI for judger" ON)  # 新增：判定模块命令行工具开关
+# ===================== 选项开关 =====================
+option(BUILD_VISION      "Build vision (OpenCV/ONNX/yaml-cpp/spdlog)" ON)
+option(BUILD_JUDGER      "Build judger (seat_state_judger)" ON)
+option(BUILD_DB          "Build database core (SQLiteCpp/sqlite3)" ON)
+# 单进程集成 WS：默认关闭独立 ws_service（以后想用多进程再打开）
+option(BUILD_WS_SERVICE  "Build standalone WebSocket push service" OFF)
 
-# ===================== 3) 头文件总入口（供 QtCreator 展示） =====================
+# ===================== 头文件总入口 =====================
 set(SEATUI_PUBLIC_HEADERS
   include/seatui/launcher/login_window.hpp
   include/seatui/launcher/role_selector.hpp
@@ -41,9 +34,11 @@ set(SEATUI_PUBLIC_HEADERS
   include/seatui/student/book_search.hpp
   include/seatui/admin/admin_window.hpp
   include/seatui/widgets/card_dialog.hpp
+
   # judger
   include/seatui/judger/seat_state_judger.hpp
   include/seatui/judger/data_structures.hpp
+
   # vision
   include/seatui/vision/Config.h
   include/seatui/vision/Enums.h
@@ -55,12 +50,17 @@ set(SEATUI_PUBLIC_HEADERS
   include/seatui/vision/Snapshotter.h
   include/seatui/vision/Types.h
   include/seatui/vision/VisionA.h
+  include/seatui/vision/VisionClient.h
+  include/seatui/vision/Nms.h
+
+  # WS（注意：你当前工程里放在 includ，e/ws/ 路径）
+  include/ws/ws_hub.hpp
 )
 
-# ===================== 4) 可执行程序（Qt主程序） =====================
+# ===================== 可执行程序（Qt主程序） =====================
 qt_add_executable(Library_System
   WIN32
-  # 入口 & 启动流程
+  # 启动/登录/角色
   src/launcher_app/main.cpp
   src/launcher_app/login_window.cpp
   src/launcher_app/role_selector.cpp
@@ -72,7 +72,13 @@ qt_add_executable(Library_System
   src/admin_app/admin_window.cpp
   # 公共小部件
   src/widgets/card_dialog.cpp
+
+  # ★ 单进程：把 WS 服务实现编进主程序（若你不想这样可删）
+  src/ws_service/ws_hub.cpp
 )
+
+
+set_target_properties(Library_System PROPERTIES AUTOMOC ON)  # ← 添加这行！
 
 target_sources(Library_System
   PUBLIC
@@ -86,9 +92,11 @@ target_include_directories(Library_System
     ${CMAKE_SOURCE_DIR}/include
 )
 
-target_link_libraries(Library_System PRIVATE Qt6::Core Qt6::Widgets Qt6::Charts Qt6::WebSockets)
+target_link_libraries(Library_System PRIVATE
+    Qt6::Core Qt6::Widgets Qt6::Charts Qt6::WebSockets Qt6::Network
+)
 
-# ===================== 5) 判断模块（Judger，B模块） =====================
+# ===================== Judger（保持你的写法，仅示例） =====================
 if(BUILD_JUDGER)
   add_library(judger STATIC
     src/judger_core/seat_state_judger.cpp
@@ -96,50 +104,56 @@ if(BUILD_JUDGER)
   target_include_directories(judger
     PUBLIC
       ${CMAKE_SOURCE_DIR}/include
-      ${CMAKE_SOURCE_DIR}/third_party/nlohmann   # 单头 json.hpp
+      ${CMAKE_SOURCE_DIR}/third_party/nlohmann
+      # 若 Judger 需要 OpenCV/其他头，可在此继续添加
       ${CMAKE_SOURCE_DIR}/third_party/sqlite/include  # 添加这一行
 
       C:/Users/LiangYS/vcpkg/installed/x64-windows/include/opencv4  # 直接使用路径
       C:/Users/LiangYS/vcpkg/installed/x64-windows/include
   )
-
-  # ===================== 新增：判定模块命令行工具 =====================
-  if(BUILD_JUDGER_CLI)
-    add_executable(judger_cli
-      tools/judger_cli.cpp            # CLI 工具源文件（有 main 函数）
-    )
-    target_include_directories(judger_cli
-      PUBLIC
-        ${CMAKE_SOURCE_DIR}/include
-        ${CMAKE_SOURCE_DIR}/third_party/nlohmann
-        ${CMAKE_SOURCE_DIR}/third_party/sqlite/include  # 添加这一行
-        ${OpenCV_INCLUDE_DIRS}  # 添加这一行！
-
-    )
-    target_link_libraries(judger_cli PRIVATE judger)
-  endif()
 endif()
 
-# ===================== 6) 数据库模块（SQLiteCpp + sqlite3） =====================
+# ===================== 数据库模块（稳健写法，兼容多种目标名） =====================
 if(BUILD_DB)
+  # 1) 只强制找 SQLiteCpp（你已用 vcpkg 安装）；
+  #    sqlite3 让它跟随 SQLiteCpp 的传递依赖，或在找得到时再补链。
+  find_package(SQLiteCpp CONFIG REQUIRED)
+
   add_library(dbcore STATIC
     src/db_core/DatabaseInitializer.cpp
     src/db_core/SeatDatabase.cpp
     src/db_core/TimeUtils.cpp
   )
+
   target_include_directories(dbcore
     PUBLIC
       ${CMAKE_SOURCE_DIR}/include
-      ${CMAKE_SOURCE_DIR}/third_party/sqlite/include
       ${CMAKE_SOURCE_DIR}/third_party/nlohmann
   )
-  target_link_libraries(dbcore PUBLIC
-    ${CMAKE_SOURCE_DIR}/third_party/sqlite/lib/libSQLiteCpp.a
-    ${CMAKE_SOURCE_DIR}/third_party/sqlite/lib/libsqlite3.a
-  )
+
+  # 2) 兼容两种常见目标名（vcpkg 一般是没有命名空间的 SQLiteCpp）
+  if(TARGET SQLiteCpp)
+    target_link_libraries(dbcore PUBLIC SQLiteCpp)
+  elseif(TARGET SQLiteCpp::SQLiteCpp)
+    target_link_libraries(dbcore PUBLIC SQLiteCpp::SQLiteCpp)
+  else()
+    message(FATAL_ERROR "Found SQLiteCpp package but no usable target (SQLiteCpp / SQLiteCpp::SQLiteCpp).")
+  endif()
+
+  # 3) sqlite3：若 vcpkg 提供的是 unofficial-sqlite3::sqlite3 就链接它；
+  #    若环境里是官方的 SQLite::SQLite3 也能识别；都找不到就忽略（大多数场景不需要你手动链）。
+  find_package(unofficial-sqlite3 CONFIG QUIET)
+  if(TARGET unofficial-sqlite3::sqlite3)
+    target_link_libraries(dbcore PUBLIC unofficial-sqlite3::sqlite3)
+  else()
+    find_package(SQLite3 QUIET) # 有些环境会导出 SQLite::SQLite3
+    if(TARGET SQLite::SQLite3)
+      target_link_libraries(dbcore PUBLIC SQLite::SQLite3)
+    endif()
+  endif()
 endif()
 
-# ===================== 7) 视觉模块（Vision，A模块） =====================
+# ===================== 视觉模块（保持原有逻辑） =====================
 if(BUILD_VISION)
   find_package(OpenCV REQUIRED)
   find_package(nlohmann_json CONFIG QUIET)
@@ -158,6 +172,7 @@ if(BUILD_VISION)
     src/vision_core/Snapshotter.cpp
     src/vision_core/Types.cpp
     src/vision_core/VisionA.cpp
+    src/vision_core/Nms.cpp
     src/vision_core/VisionClient.cpp
   )
 
@@ -165,22 +180,12 @@ if(BUILD_VISION)
     PUBLIC
       ${CMAKE_SOURCE_DIR}/include
       ${CMAKE_SOURCE_DIR}/third_party/nlohmann
-      ${CMAKE_SOURCE_DIR}/third_party/onnxruntime/include  # 添加 ONNX Runtime 头文件
+      ${CMAKE_SOURCE_DIR}/third_party/onnxruntime/include
   )
 
-  # 修复：使用正确的 OpenCV 目标名称
-  target_link_libraries(vision
-    PUBLIC
-      ${OpenCV_LIBS}
-  )
+  target_link_libraries(vision PUBLIC ${OpenCV_LIBS})
+  target_link_libraries(vision PUBLIC ${CMAKE_SOURCE_DIR}/third_party/onnxruntime/lib/onnxruntime.lib)
 
-  # 链接 ONNX Runtime 库
-  target_link_libraries(vision
-    PUBLIC
-      ${CMAKE_SOURCE_DIR}/third_party/onnxruntime/lib/onnxruntime.lib
-  )
-
-  # 运行时 DLL 拷贝（Windows 需要）
   if(WIN32)
     add_custom_command(TARGET vision POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy
@@ -207,7 +212,7 @@ if(BUILD_VISION)
   endif()
 endif()
 
-# ===================== 8) 主程序链接各模块 =====================
+# ===================== 主程序链接各模块 =====================
 if(BUILD_JUDGER)
   target_link_libraries(Library_System PRIVATE judger)
 endif()
@@ -218,8 +223,30 @@ if(BUILD_VISION)
   target_link_libraries(Library_System PRIVATE vision)
 endif()
 
+# ===================== WebSocket 推送服务（独立进程，默认 OFF） =====================
+if(BUILD_WS_SERVICE)
+  if(BUILD_DB)
+    add_executable(ws_service
+      src/ws_service/ws_main.cpp
+      src/ws_service/ws_hub.cpp
+      include/ws/ws_hub.hpp
+    )
 
-# ===================== 9) 运行期资源拷贝 =====================
+    # 添加这行：为 ws_service 也启用 AUTOMOC
+    set_target_properties(ws_service PROPERTIES AUTOMOC ON)
+
+
+    target_include_directories(ws_service PUBLIC ${CMAKE_SOURCE_DIR}/include)
+    target_link_libraries(ws_service PRIVATE
+      Qt6::Core Qt6::WebSockets Qt6::Network
+      dbcore
+    )
+  else()
+    message(WARNING "BUILD_WS_SERVICE=ON 但 BUILD_DB=OFF，ws_service 需要数据库模块，已跳过构建。")
+  endif()
+endif()
+
+# ===================== 运行期资源拷贝 =====================
 add_custom_command(TARGET Library_System POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_directory
           ${CMAKE_SOURCE_DIR}/assets/vision
@@ -227,7 +254,6 @@ add_custom_command(TARGET Library_System POST_BUILD
   COMMENT "Copy assets/vision to runtime output"
 )
 
-# 拷贝 Input 目录到可执行文件所在目录（供图书查询使用）
 add_custom_command(TARGET Library_System POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_directory
           ${CMAKE_SOURCE_DIR}/Input
@@ -235,17 +261,7 @@ add_custom_command(TARGET Library_System POST_BUILD
   COMMENT "Copy Input to runtime output (books.txt)"
 )
 
-# 如果 judger_cli 也需要资源文件，可以添加类似的拷贝命令
-if(BUILD_JUDGER_CLI)
-  add_custom_command(TARGET judger_cli POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${CMAKE_SOURCE_DIR}/assets/vision
-            $<TARGET_FILE_DIR:judger_cli>/assets/vision
-    COMMENT "Copy assets/vision to judger_cli output"
-  )
-endif()
-
-# ===================== 10) 安装与部署 =====================
+# ===================== 安装与部署 =====================
 include(GNUInstallDirs)
 install(TARGETS Library_System
     BUNDLE  DESTINATION .
@@ -253,9 +269,8 @@ install(TARGETS Library_System
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
 
-# 可选：安装 judger_cli
-if(BUILD_JUDGER_CLI)
-  install(TARGETS judger_cli
+if(BUILD_WS_SERVICE AND BUILD_DB)
+  install(TARGETS ws_service
       RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
   )
 endif()
