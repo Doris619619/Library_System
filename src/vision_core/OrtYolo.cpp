@@ -1,6 +1,6 @@
 // 单一实现：支持 fake_infer 生成少量随机框，便于演示
 
-#include "vision/OrtYolo.h"
+#include "seatui/vision/OrtYolo.h"
 #include <random>
 #include <vector>
 
