@@ -104,7 +104,8 @@ bool SeatStateJudger::readLastFrameData(
     vector<A2B_Data>& out_a2b_data_list,
     vector<json>& out_seat_j_list
 ) {
-    const string last_frame_path = "./runtime/last_frame.jsonl";
+    const string last_frame_path = "../../out/last_frame.jsonl";
+
     out_a2b_data_list.clear();
     out_seat_j_list.clear();
 
@@ -231,7 +232,7 @@ bool SeatStateJudger::readJsonlFile(
     vector<vector<A2B_Data>>& batch_a2b_data,
     vector<vector<json>>& batch_seat_j
 ) {
-    string actual_path = jsonl_path.empty() ? "./runtime/seat_states.jsonl" : jsonl_path;
+    string actual_path = jsonl_path.empty() ? "../../out/seat_states.jsonl" : jsonl_path;
     batch_a2b_data.clear();
     batch_seat_j.clear();
 
