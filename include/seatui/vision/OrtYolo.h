@@ -1,11 +1,9 @@
 #pragma once
-#include "D:/Coding/Cpp/Projects/CSC3002Proj/Vision_Core/thirdparty/onnxruntime/include/onnxruntime_cxx_api.h"
+#include "./third_party/onnxruntime/include/onnxruntime_cxx_api.h"
 #include <opencv2/opencv.hpp>
 #include <opencv2/core.hpp>
 #include <vector>
 #include <string>
-
-// Notice: 当前该文件上面的第一个include还未上传，稍后上传并放置在thirdparty内（上传前会先检查当前thirdparty内是否包含该库）
 
 namespace vision {
 
