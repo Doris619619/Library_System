@@ -21,7 +21,7 @@ using namespace std;
 
 const float IOU_THRESHOLD = 0.3f;
 const float FG_RATIO_THRESHOLD = 0.05f;
-const int ANOMALY_THRESHOLD_SECONDS = 120;
+const int ANOMALY_THRESHOLD_SECONDS = 6;
 const int MORPH_KERNEL_SIZE = 5;
 
 class SeatStateJudger {
