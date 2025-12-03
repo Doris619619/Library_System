@@ -27,7 +27,7 @@ SeatStateJudger::SeatStateJudger()
         db_ = &SeatDatabase::getInstance();
         db_->initialize();
     } catch (const std::exception& e) {
-        std::cout << "[BModule] SeatDatabase 初始化失败: " << e.what() << std::endl;
+        std::cout << "[B] SeatDatabase initialization failed " << e.what() << std::endl;
         db_ = nullptr;
     }
 }
@@ -104,13 +104,13 @@ bool SeatStateJudger::readJsonlFile(
     }
 
     if (!fs::exists(jsonl_path) || !fs::is_regular_file(jsonl_path)) {
-        cout << "[BModule] Error: JSONL 文件未找到: " << jsonl_path << endl;
+        cout << "[BModule] Error: JSONL file not found: " << jsonl_path << endl;
         return false;
     }
 
     ifstream file(jsonl_path);
     if (!file.is_open()) {
-        cout << "[BModule] Error: 打不开 JSONL 文件: " << jsonl_path << endl;
+        cout << "[BModule] Error: Failed to open JSONL file: " << jsonl_path << endl;
         return false;
     }
 
@@ -212,12 +212,12 @@ bool SeatStateJudger::readJsonlFile(
                 ++frame_count;
             }
         } catch (const json::exception& e) {
-            cout << "[BModule] Error: 解析 JSONL 行失败: " << e.what() << endl;
+            cout << "[BModule] Error: Failed to parse JSONL line: " << e.what() << endl;
             continue;
         }
     }
 
-    cout << "[BModule] 成功读取 " << frame_count << " 帧批量数据 from " << jsonl_path << endl;
+    cout << "[BModule] Successfully read " << frame_count << " frames of batch data from " << jsonl_path << endl;
     return frame_count > 0;
 }
 
@@ -273,7 +273,7 @@ void SeatStateJudger::processAData(
             alert.alert_id = state.seat_id + "_" + a_data.timestamp;
             alert.seat_id = state.seat_id;
             alert.alert_type = "AnomalyOccupied";
-            alert.alert_desc = string("座位被物品占用，持续") + to_string(anomaly_occupied_duration_[state.seat_id]) + "秒";
+            alert.alert_desc = string("Seat occupied by object for ") + to_string(anomaly_occupied_duration_[state.seat_id]) + " seconds";
             alert.timestamp = a_data.timestamp;
             alert.is_processed = false;
             alerts.push_back(alert);
@@ -337,12 +337,11 @@ void SeatStateJudger::run(const string& jsonl_dir) {
     fs::path folder(dir_path);
 
     if (!fs::exists(folder) || !fs::is_directory(folder)) {
-        cout << "[Error] JSONL 目录不存在: " << dir_path << endl;
+        cout << "[Error] JSONL directory does not exist: " << dir_path << endl;
         return;
     }
 
-    cout << "[Info] B 模块开始监听目录: " << fs::absolute(folder).string() << endl;
-
+    cout << "[Info] B module started monitoring directory: " << fs::absolute(folder).string() << endl;
     // ------ 主循环 ------
     while (true) {
         try {
@@ -355,14 +354,14 @@ void SeatStateJudger::run(const string& jsonl_dir) {
 
                 if (processed_files_.count(filename)) continue;
 
-                cout << "[B] 发现新文件: " << filename << endl;
+                cout << "[B] New file detected: " << filename << endl;
 
                 vector<vector<A2B_Data>> batch_a2b;
                 vector<vector<json>> batch_seat_j;
 
                 bool ok = readJsonlFile(file_path, batch_a2b, batch_seat_j);
                 if (!ok) {
-                    cout << "[B] 文件读取失败，跳过: " << filename << endl;
+                    cout << "[B] Failed to read file, skipping: " << filename << endl;
                     processed_files_.insert(filename);
                     continue;
                 }
@@ -375,7 +374,7 @@ void SeatStateJudger::run(const string& jsonl_dir) {
                     if (frame_a2b.empty()) continue;
 
                     int frame_id = frame_a2b[0].frame_id;
-                    cout << "[Frame " << frame_id << "] 处理 " << frame_a2b.size() << " 个座位" << endl;
+                    cout << "[Frame " << frame_id << "] Processing " << frame_a2b.size() << " seats" << endl;
 
                     bool need_store_this_frame = false;
 
@@ -414,7 +413,7 @@ void SeatStateJudger::run(const string& jsonl_dir) {
 
                     if (need_store_this_frame) {
                         need_store_frame_indexes_.insert(frame_id);
-                        cout << "[Info] 标记帧 " << frame_id << " 需要入库" << endl;
+                        cout << "[Info] Marked frame " << frame_id << " for storage" << endl;
                     }
 
                     cout << "-------------------------------------" << endl;
@@ -423,7 +422,7 @@ void SeatStateJudger::run(const string& jsonl_dir) {
                 processed_files_.insert(filename);
             }
         } catch (const std::exception& e) {
-            cout << "[B] 处理 JSONL 文件时出现异常: " << e.what() << endl;
+            cout << "[B] Error while processing JSONL files: " << e.what() << endl;
         }
 
         // 每 2 秒轮询目录
