@@ -1,9 +1,6 @@
 #include "seatui/judger/seat_state_judger.hpp"
-
-//从 src/judger_core 跳到 src/db_core
 #include "../db_core/SeatDatabase.h"
 
-#include <opencv2/video/background_segm.hpp>
 #include <sstream>
 #include <iomanip>
 #include <fstream>
@@ -27,7 +24,6 @@ static inline std::string normalizeSeatId(const std::string& raw) {
 SeatStateJudger::SeatStateJudger()
 {
     try {
-        // 使用带默认参数的单例获取方式
         db_ = &SeatDatabase::getInstance();
         db_->initialize();
     } catch (const std::exception& e) {
@@ -47,17 +43,14 @@ int SeatStateJudger::SeatTimer::getElapsedSeconds() {
 string SeatStateJudger::getISO8601Timestamp() {
     auto now = chrono::system_clock::now();
     auto in_time_t = chrono::system_clock::to_time_t(now);
-
     struct tm local_tm{};
 #ifdef _WIN32
     localtime_s(&local_tm, &in_time_t);
 #else
     localtime_r(&in_time_t, &local_tm);
 #endif
-
     char buf[32];
     strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &local_tm);
-
     return string(buf);
 }
 
@@ -69,16 +62,12 @@ string SeatStateJudger::msToISO8601(int64_t ts_ms) {
 #else
     localtime_r(&sec, &local_tm);
 #endif
-
     char buf[32];
-    // 改成 "2024-01-15 11:30:00"
     strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &local_tm);
-
     return string(buf);
 }
 
 string SeatStateJudger::stateToStr(int status_enum) {
-    // using B2CD_State enum integers (0=UNSEATED,1=SEATED,2=ANOMALY_OCCUPIED)
     if (status_enum == 1) return "Seated";
     if (status_enum == 2) return "Anomaly";
     return "Unseated";
@@ -99,181 +88,72 @@ float SeatStateJudger::calculateIoU(const Rect& rect1, const Rect& rect2) {
     return static_cast<float>(inter_area) / static_cast<float>(union_area);
 }
 
-// ---------- JSONL 读取（last_frame.jsonl 单帧读取） ----------
-bool SeatStateJudger::readLastFrameData(
-    vector<A2B_Data>& out_a2b_data_list,
-    vector<json>& out_seat_j_list
-) {
-    const string last_frame_path = "../../out/last_frame.jsonl";
-
-    out_a2b_data_list.clear();
-    out_seat_j_list.clear();
-
-    if (!fs::exists(last_frame_path)) {
-        cout << "[BModule] Warning: last_frame.jsonl not found" << endl;
-        return false;
-    }
-
-    ifstream file(last_frame_path);
-    string line;
-    bool has_valid = false;
-    while (getline(file, line)) {
-        if (line.empty()) continue;
-        try {
-            json j = json::parse(line);
-            has_valid = true;
-
-            // image path handling
-            string image_path = j.value("image_path", string());
-            // normalize separators
-            replace(image_path.begin(), image_path.end(), '\\', '/');
-            string full_image_path = fs::current_path().string() + "/" + image_path;
-            Mat frame = imread(full_image_path);
-            if (frame.empty()) {
-                frame = Mat::zeros(1080, 1920, CV_8UC3);
-                cout << "[BModule] Warning: 图像文件未找到，使用黑帧: " << full_image_path << endl;
-            }
-
-            int frame_index = j.value("frame_index", 0);
-            int64_t ts_ms = j.value("ts_ms", 0LL);
-            string timestamp = msToISO8601(ts_ms);
-
-            if (!j.contains("seats") || !j["seats"].is_array()) continue;
-            for (auto& seat_j : j["seats"]) {
-                A2B_Data a2b;
-                a2b.frame_id = frame_index;
-                a2b.timestamp = timestamp;
-                a2b.frame = frame;
-                // seat_id may be int in json, convert to string
-                if (seat_j.contains("seat_id")) {
-                    if (seat_j["seat_id"].is_string()) a2b.seat_id = seat_j["seat_id"].get<string>();
-                    else a2b.seat_id = to_string(seat_j["seat_id"].get<int>());
-                } else {
-                    a2b.seat_id = "unknown";
-                }
-
-                // seat_roi: safe parse
-                int roi_x = seat_j.value("seat_roi", json::object()).value("x", 0);
-                int roi_y = seat_j.value("seat_roi", json::object()).value("y", 0);
-                int roi_w = seat_j.value("seat_roi", json::object()).value("w", 0);
-                int roi_h = seat_j.value("seat_roi", json::object()).value("h", 0);
-                if (roi_w <= 0 || roi_h <= 0) {
-                    a2b.seat_roi = Rect(0,0,1,1);
-                } else {
-                    a2b.seat_roi = Rect(roi_x, roi_y, roi_w, roi_h);
-                }
-
-                // seat_poly
-                a2b.seat_poly.clear();
-                if (seat_j.contains("seat_poly") && seat_j["seat_poly"].is_array()) {
-                    for (auto& p : seat_j["seat_poly"]) {
-                        if (p.is_array() && p.size() == 2) {
-                            int px = p[0].get<int>();
-                            int py = p[1].get<int>();
-                            a2b.seat_poly.emplace_back(px, py);
-                        }
-                    }
-                    if ((a2b.seat_roi.width == 1 && a2b.seat_roi.height == 1) && !a2b.seat_poly.empty()) {
-                        a2b.seat_roi = boundingRect(a2b.seat_poly);
-                    }
-                }
-
-                // person_boxes
-                a2b.person_boxes.clear();
-                if (seat_j.contains("person_boxes") && seat_j["person_boxes"].is_array()) {
-                    for (auto& pb : seat_j["person_boxes"]) {
-                        DetectedObject obj;
-                        obj.bbox = Rect(
-                            pb.value("x",0),
-                            pb.value("y",0),
-                            pb.value("w",0),
-                            pb.value("h",0)
-                        );
-                        // conf in example is big (like 4.6), scale to 0-1 by /10 (as original)
-                        obj.score = static_cast<float>(pb.value("conf", 0.0)) / 10.0f;
-                        obj.class_name = pb.value("cls_name", string("person"));
-                        obj.class_id = pb.value("cls_id", 0);
-                        a2b.person_boxes.push_back(obj);
-                    }
-                }
-
-                // object_boxes
-                a2b.object_boxes.clear();
-                if (seat_j.contains("object_boxes") && seat_j["object_boxes"].is_array()) {
-                    for (auto& ob : seat_j["object_boxes"]) {
-                        DetectedObject obj;
-                        obj.bbox = Rect(
-                            ob.value("x",0),
-                            ob.value("y",0),
-                            ob.value("w",0),
-                            ob.value("h",0)
-                        );
-                        obj.score = static_cast<float>(ob.value("conf", 0.0)) / 10.0f;
-                        obj.class_name = ob.value("cls_name", string("object"));
-                        obj.class_id = ob.value("cls_id", 0);
-                        a2b.object_boxes.push_back(obj);
-                    }
-                }
-
-                out_a2b_data_list.push_back(a2b);
-                out_seat_j_list.push_back(seat_j);
-            }
-        } catch (const json::exception& e) {
-            cout << "[BModule] Error: 解析 JSON 行失败: " << e.what() << endl;
-            continue;
-        }
-    }
-    return has_valid;
-}
-
-// ---------- JSONL 批量读取（用于 run(jsonl_path)） ----------
+// ---------- JSONL 批量读取（用于 run()） ----------
+// 说明：jsonl_path 应为 JSONL 文件的完整路径（例如由 run() 遍历得到的 entry.path().string()）
 bool SeatStateJudger::readJsonlFile(
     const string& jsonl_path,
     vector<vector<A2B_Data>>& batch_a2b_data,
     vector<vector<json>>& batch_seat_j
 ) {
-    string actual_path = jsonl_path.empty() ? "../../out/seat_states.jsonl" : jsonl_path;
     batch_a2b_data.clear();
     batch_seat_j.clear();
 
-    if (!fs::exists(actual_path)) {
-        cout << "[BModule] Error: JSONL 文件未找到: " << actual_path << endl;
+    if (jsonl_path.empty()) {
+        cout << "[BModule] Error: readJsonlFile got empty path" << endl;
         return false;
     }
 
-    ifstream file(actual_path);
+    if (!fs::exists(jsonl_path) || !fs::is_regular_file(jsonl_path)) {
+        cout << "[BModule] Error: JSONL 文件未找到: " << jsonl_path << endl;
+        return false;
+    }
+
+    ifstream file(jsonl_path);
+    if (!file.is_open()) {
+        cout << "[BModule] Error: 打不开 JSONL 文件: " << jsonl_path << endl;
+        return false;
+    }
+
     string line;
     int frame_count = 0;
+
+    // 将每个 JSONL 文件视为一帧（或一段数据），我们把它的所有 seat 条目当成一个 frame 的内容
+    vector<A2B_Data> frame_a2b;
+    vector<json> frame_seat_j;
+
+    // json 所在目录（如果 JSON 中包含相对路径，并且你需要解析它，可用 json_dir）
+    fs::path json_dir = fs::path(jsonl_path).parent_path();
+
     while (getline(file, line)) {
         if (line.empty()) continue;
         try {
             json j = json::parse(line);
-            vector<A2B_Data> frame_a2b;
-            vector<json> frame_seat_j;
 
-            string image_path = j.value("image_path", string());
-            replace(image_path.begin(), image_path.end(), '\\', '/');
-            string full_image_path = fs::current_path().string() + "/" + image_path;
-            Mat frame = imread(full_image_path);
-            if (frame.empty()) {
-                frame = Mat::zeros(1080, 1920, CV_8UC3);
-                cout << "[BModule] Warning: 图像文件未找到，使用黑帧: " << full_image_path << endl;
-            }
+            // NOTE: B 模块不需要读取图片或 snapshot，故不再尝试 imread。
+            // 我们只解析 JSON 中与座位状态相关的字段（seats / seat_id / person_count / object_count / occupancy_state 等）
 
             int frame_index = j.value("frame_index", 0);
             string timestamp = msToISO8601(j.value("ts_ms", 0LL));
 
             if (!j.contains("seats") || !j["seats"].is_array()) continue;
+
+            frame_a2b.clear();
+            frame_seat_j.clear();
+
             for (auto& seat_j : j["seats"]) {
                 A2B_Data a2b;
                 a2b.frame_id = frame_index;
                 a2b.timestamp = timestamp;
-                a2b.frame = frame;
+                a2b.frame = Mat(); // 不加载图片，保持空
+
+                // seat_id
                 if (seat_j.contains("seat_id")) {
                     if (seat_j["seat_id"].is_string()) a2b.seat_id = seat_j["seat_id"].get<string>();
-                    else a2b.seat_id = to_string(seat_j["seat_id"].get<int>());
+                    else if (seat_j["seat_id"].is_number()) a2b.seat_id = to_string(seat_j["seat_id"].get<int>());
+                    else a2b.seat_id = "unknown";
                 } else a2b.seat_id = "unknown";
 
+                // seat_roi（保留基本解析）
                 int roi_x = seat_j.value("seat_roi", json::object()).value("x", 0);
                 int roi_y = seat_j.value("seat_roi", json::object()).value("y", 0);
                 int roi_w = seat_j.value("seat_roi", json::object()).value("w", 0);
@@ -281,7 +161,7 @@ bool SeatStateJudger::readJsonlFile(
                 if (roi_w <= 0 || roi_h <= 0) a2b.seat_roi = Rect(0,0,1,1);
                 else a2b.seat_roi = Rect(roi_x, roi_y, roi_w, roi_h);
 
-                // seat_poly
+                // seat_poly（可选）
                 a2b.seat_poly.clear();
                 if (seat_j.contains("seat_poly") && seat_j["seat_poly"].is_array()) {
                     for (auto& p : seat_j["seat_poly"]) {
@@ -294,12 +174,13 @@ bool SeatStateJudger::readJsonlFile(
                     }
                 }
 
-                // person boxes
+                // person_boxes
                 a2b.person_boxes.clear();
                 if (seat_j.contains("person_boxes") && seat_j["person_boxes"].is_array()) {
                     for (auto& pb : seat_j["person_boxes"]) {
                         DetectedObject obj;
-                        obj.bbox = Rect(pb.value("x",0), pb.value("y",0), pb.value("w",0), pb.value("h",0));
+                        obj.bbox = Rect(pb.value("x",0), pb.value("y",0),
+                                        pb.value("w",0), pb.value("h",0));
                         obj.score = static_cast<float>(pb.value("conf",0.0)) / 10.0f;
                         obj.class_name = pb.value("cls_name", string("person"));
                         obj.class_id = pb.value("cls_id", 0);
@@ -307,12 +188,13 @@ bool SeatStateJudger::readJsonlFile(
                     }
                 }
 
-                // object boxes
+                // object_boxes
                 a2b.object_boxes.clear();
                 if (seat_j.contains("object_boxes") && seat_j["object_boxes"].is_array()) {
                     for (auto& ob : seat_j["object_boxes"]) {
                         DetectedObject obj;
-                        obj.bbox = Rect(ob.value("x",0), ob.value("y",0), ob.value("w",0), ob.value("h",0));
+                        obj.bbox = Rect(ob.value("x",0), ob.value("y",0),
+                                        ob.value("w",0), ob.value("h",0));
                         obj.score = static_cast<float>(ob.value("conf",0.0)) / 10.0f;
                         obj.class_name = ob.value("cls_name", string("object"));
                         obj.class_id = ob.value("cls_id", 0);
@@ -335,11 +217,11 @@ bool SeatStateJudger::readJsonlFile(
         }
     }
 
-    cout << "[BModule] 成功读取 " << frame_count << " 帧批量数据" << endl;
+    cout << "[BModule] 成功读取 " << frame_count << " 帧批量数据 from " << jsonl_path << endl;
     return frame_count > 0;
 }
 
-// ---------- processAData: 关键逻辑----------
+// ---------- processAData: 关键逻辑（保持原样） ----------
 void SeatStateJudger::processAData(
     const A2B_Data& a_data,
     const json& seat_j,
@@ -447,13 +329,11 @@ void SeatStateJudger::processAData(
 }
 
 // ---------- run 主循环 ----------
-
-
 void SeatStateJudger::run(const string& jsonl_dir) {
     resetNeedStoreFrameIndexes();
 
-    // 目录路径，如果传空就用默认目录
-    string dir_path = jsonl_dir.empty() ? "./out" : jsonl_dir;
+    // 目录路径，如果传空就用默认目录（从 Release 工作目录回溯到 Library_System/out）
+    string dir_path = jsonl_dir.empty() ? "../../out" : jsonl_dir;
     fs::path folder(dir_path);
 
     if (!fs::exists(folder) || !fs::is_directory(folder)) {
@@ -461,30 +341,22 @@ void SeatStateJudger::run(const string& jsonl_dir) {
         return;
     }
 
-    cout << "[Info] B 模块开始监听目录: " << dir_path << endl;
+    cout << "[Info] B 模块开始监听目录: " << fs::absolute(folder).string() << endl;
 
     // ------ 主循环 ------
     while (true) {
         try {
-            // 遍历 JSONL 文件
             for (auto& entry : fs::directory_iterator(folder)) {
-                if (!entry.is_regular_file())
-                    continue;
+                if (!entry.is_regular_file()) continue;
+                if (entry.path().extension() != ".jsonl") continue;
 
                 string file_path = entry.path().string();
                 string filename  = entry.path().filename().string();
 
-                // 跳过非 .jsonl 文件
-                if (entry.path().extension() != ".jsonl")
-                    continue;
-
-                // 防止重复处理
-                if (processed_files_.count(filename))
-                    continue;
+                if (processed_files_.count(filename)) continue;
 
                 cout << "[B] 发现新文件: " << filename << endl;
 
-                // ======== 读取 JSONL =========
                 vector<vector<A2B_Data>> batch_a2b;
                 vector<vector<json>> batch_seat_j;
 
@@ -495,17 +367,15 @@ void SeatStateJudger::run(const string& jsonl_dir) {
                     continue;
                 }
 
-                // ======== 按帧处理 =========
+                // 按帧处理（每个 JSONL 的每一行当作一帧）
                 for (size_t f = 0; f < batch_a2b.size(); ++f) {
                     auto& frame_a2b  = batch_a2b[f];
                     auto& frame_j    = batch_seat_j[f];
 
-                    if (frame_a2b.empty())
-                        continue;
+                    if (frame_a2b.empty()) continue;
 
                     int frame_id = frame_a2b[0].frame_id;
-                    cout << "[Frame " << frame_id << "] 处理 " << frame_a2b.size()
-                         << " 个座位" << endl;
+                    cout << "[Frame " << frame_id << "] 处理 " << frame_a2b.size() << " 个座位" << endl;
 
                     bool need_store_this_frame = false;
 
@@ -515,45 +385,29 @@ void SeatStateJudger::run(const string& jsonl_dir) {
                         B2C_SeatSnapshot snapshot;
                         optional<B2C_SeatEvent> event;
 
-                        processAData(frame_a2b[i], frame_j[i],
-                                     state, alerts, snapshot, event);
+                        processAData(frame_a2b[i], frame_j[i], state, alerts, snapshot, event);
 
-                        // ====== 写入数据库 ======
+                        // 写入数据库
                         if (event.has_value() && db_) {
-                            db_->insertSeatEvent(
-                                event->seat_id,
-                                event->state,
-                                event->timestamp,
-                                event->duration_sec
-                            );
+                            db_->insertSeatEvent(event->seat_id, event->state, event->timestamp, event->duration_sec);
                         }
                         if (db_) {
-                            db_->insertSnapshot(
-                                snapshot.timestamp,
-                                snapshot.seat_id,
-                                snapshot.state,
-                                snapshot.person_count
-                            );
+                            db_->insertSnapshot(snapshot.timestamp, snapshot.seat_id, snapshot.state, snapshot.person_count);
                         }
-                        for (auto& a : alerts)
-                            if (db_) db_->insertAlert(
-                                a.alert_id, a.seat_id, a.alert_type,
-                                a.alert_desc, a.timestamp, a.is_processed
-                            );
+                        for (auto& a : alerts) {
+                            if (db_) db_->insertAlert(a.alert_id, a.seat_id, a.alert_type, a.alert_desc, a.timestamp, a.is_processed);
+                        }
 
-                        // ====== 日志打印 ======
+                        // 日志
                         cout << "  Seat " << state.seat_id
                              << " : " << stateToStr((int)state.status)
                              << " dur=" << state.status_duration
                              << " conf=" << fixed << setprecision(2)
                              << state.confidence << endl;
 
-                        if (!alerts.empty())
-                            cout << "    Alert: " << alerts[0].alert_desc << endl;
+                        if (!alerts.empty()) cout << "    Alert: " << alerts[0].alert_desc << endl;
 
-                        // 用于 C/D 决定是否保存该帧
-                        if (event.has_value() || !alerts.empty() ||
-                            state.status != B2CD_State::UNSEATED) {
+                        if (event.has_value() || !alerts.empty() || state.status != B2CD_State::UNSEATED) {
                             need_store_this_frame = true;
                         }
                     }
@@ -566,11 +420,9 @@ void SeatStateJudger::run(const string& jsonl_dir) {
                     cout << "-------------------------------------" << endl;
                 }
 
-                // 处理完就记录
                 processed_files_.insert(filename);
             }
-        }
-        catch (const std::exception& e) {
+        } catch (const std::exception& e) {
             cout << "[B] 处理 JSONL 文件时出现异常: " << e.what() << endl;
         }
 
