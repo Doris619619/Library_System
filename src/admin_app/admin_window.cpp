@@ -25,6 +25,10 @@
 
 #include <seatui/widgets/card_dialog.hpp>
 
+// —— 前置声明：文件后面有它的实现（static自由函数）——
+static void upsertRow(QTableWidget* t, const QString& seat, int state,
+                      const QString& sinceIso, const QString& recentIso);
+
 /* ========== 1. AdminWindow 构造 / 选项卡 ========== */
 
 AdminWindow::AdminWindow(QWidget* parent) : QMainWindow(parent) {
@@ -44,7 +48,52 @@ AdminWindow::AdminWindow(QWidget* parent) : QMainWindow(parent) {
     tabs_->addTab(buildSeatMonitorPage(), QString::fromUtf8("占座监控"));
 
     // WebSocket 服务器用于接收学生端“一键求助”
-    initWsServer();
+    //initWsServer();
+
+    // === 删除原来的 initWsServer() 调用 ===
+    // 改为调用 initWsClient()
+    initWsClient();
+
+
+
+
+
+
+    //新增
+/*
+
+    // === 订阅外部 ws_service 的座位快照（与学生端类似） ===
+    ws_ = new QWebSocket(QString(), QWebSocketProtocol::VersionLatest, this);
+
+    connect(ws_, &QWebSocket::connected, this, [this]{
+        wsReady_ = true;
+        // 可选：告诉服务端我是 admin
+        ws_->sendTextMessage(QStringLiteral(R"({"type":"hello","role":"admin"})"));
+    });
+    connect(ws_, &QWebSocket::disconnected, this, [this]{
+        wsReady_ = false;
+        // 简单的重连（1秒后）
+        QTimer::singleShot(1000, this, [this]{
+            if (ws_) ws_->open(QUrl(QStringLiteral("ws://127.0.0.1:12345")));
+        });
+    });
+    connect(ws_, QOverload<QAbstractSocket::SocketError>::of(&QWebSocket::errorOccurred),
+            this, [this](auto){
+                // 首次连不上也尝试重连
+                QTimer::singleShot(1000, this, [this]{
+                    if (ws_ && !wsReady_) ws_->open(QUrl(QStringLiteral("ws://127.0.0.1:12345")));
+                });
+            });
+
+    // —— 订阅消息：你文件里已有 connect(ws_, &QWebSocket::textMessageReceived, ...) 这一段，保持不变 ——
+
+    // 首次连接
+    ws_->open(QUrl(QStringLiteral("ws://127.0.0.1:12345")));
+
+*/
+
+
+
 
     /* ========== 2. 本地演示定时器：每 2 秒刷一次座位快照 ========== */
     auto demoTimer = new QTimer(this);
@@ -66,7 +115,31 @@ AdminWindow::AdminWindow(QWidget* parent) : QMainWindow(parent) {
 
         onSeatSnapshotJson(root);
     });
-    demoTimer->start();
+
+
+/*
+    connect(ws_, &QWebSocket::textMessageReceived, this, [this](const QString& msg){
+    QJsonParseError er; auto doc = QJsonDocument::fromJson(msg.toUtf8(), &er);
+    if (er.error != QJsonParseError::NoError || !doc.isObject()) return;
+    const auto obj = doc.object();
+
+    if (obj.value("type").toString() == "seat_snapshot"){
+        const auto arr = obj.value("items").toArray();
+        const QString nowUtc = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+        for (const auto& it : arr){
+            if (!it.isObject()) continue;
+            const auto o = it.toObject();
+            const QString id    = o.value("seat_id").toString();
+            const int     st    = o.value("state").toInt(0);
+            const QString since = o.value("since").toString();
+
+            setSeatCell(id, st, since);                  // 改卡片颜色和文案
+            if (seatTable_) upsertRow(seatTable_, id, st, since, nowUtc);  // 改表格
+        }
+    }
+});
+*/
+    //demoTimer->start();
 }
 
 /* ========== 3. 其它页面（占位） ========== */
@@ -361,6 +434,8 @@ void AdminWindow::onHelpArrived(const QByteArray& utf8Json) {
     appendHelpRow(when, user, text, th, rawB64, mime);
 }
 
+//删了让他作为客户端
+/*
 void AdminWindow::initWsServer() {
     wsServer_ = new QWebSocketServer(QStringLiteral("SeatUI-Admin-WS"),
                                      QWebSocketServer::NonSecureMode, this);
@@ -395,4 +470,65 @@ void AdminWindow::initWsServer() {
 
         sock->sendTextMessage(QStringLiteral(R"({"type":"hello","role":"admin"})"));
     });
+}
+*/
+
+void AdminWindow::initWsClient() {
+    if (ws_) {
+        ws_->deleteLater();
+        ws_ = nullptr;
+    }
+
+    ws_ = new QWebSocket(QString(), QWebSocketProtocol::VersionLatest, this);
+    wsReady_ = false;
+
+    connect(ws_, &QWebSocket::connected, this, [this](){
+        QJsonObject hello{{"type","hello"},{"role","admin"}};
+        ws_->sendTextMessage(QJsonDocument(hello).toJson(QJsonDocument::Compact));
+    });
+
+    connect(ws_, &QWebSocket::textMessageReceived, this, [this](const QString& msg){
+        // 统一消息处理
+        QJsonParseError error;
+        auto doc = QJsonDocument::fromJson(msg.toUtf8(), &error);
+        if (error.error != QJsonParseError::NoError || !doc.isObject()) return;
+
+        const auto obj = doc.object();
+        const QString type = obj.value("type").toString();
+
+        if (type == "seat_snapshot") {
+            onSeatSnapshotJson(obj);
+        } else if (type == "student_help") {
+            onHelpArrived(msg.toUtf8());
+        }
+        // 可以添加其他消息类型的处理
+
+
+        else if (type == "seat_update") {
+            const auto stats = obj.value("stats").toObject(); // 若要用统计，可读这里
+            const auto arr = obj.value("seats").toArray();    // 注意是 seats
+            const QString nowUtc = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+            for (const auto& it : arr) {
+                if (!it.isObject()) continue;
+                const auto o = it.toObject();
+                const QString id = o.value("id").toString();
+                const QString s  = o.value("state").toString();
+                int st = (s == "Seated" ? 1 : (s == "Anomaly" ? 2 : 0));
+                const QString since = o.value("last_update").toString();
+                setSeatCell(id, st, since);
+                if (seatTable_) upsertRow(seatTable_, id, st, since, nowUtc);
+            }
+        }
+
+    });
+
+    connect(ws_, &QWebSocket::disconnected, this, [this](){
+        wsReady_ = false;
+        QTimer::singleShot(1000, this, [this](){
+            if (ws_) ws_->open(QUrl("ws://127.0.0.1:12345"));
+        });
+    });
+
+    // 首次连接
+    ws_->open(QUrl("ws://127.0.0.1:12345"));
 }
