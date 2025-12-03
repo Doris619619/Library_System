@@ -3,6 +3,25 @@ project(Library_System LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# ===================== 新增：编译器特性设置 =====================
+if(MSVC)
+    # MSVC特定设置
+    add_compile_options(/utf-8)  # 强制UTF-8
+    add_compile_options(/Zc:__cplusplus)  # 正确报告C++标准
+    add_compile_options(/permissive-)  # 标准一致性模式
+
+    # 可选：禁用特定警告（如果需要）
+    # add_compile_options(/wd4819)  # 禁用编码警告（如果仍有警告）
+    # add_compile_options(/wd4996)  # 禁用安全警告
+
+    # 设置字符集
+    add_compile_definitions(_UNICODE UNICODE)
+else()
+    # GCC/Clang设置
+    add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
+
+
 # ===================== 1) Qt（前端基准） =====================
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets Charts WebSockets)
 qt_standard_project_setup()
@@ -19,6 +38,7 @@ set(SEATUI_PUBLIC_HEADERS
   include/seatui/launcher/role_selector.hpp
   include/seatui/student/student_window.hpp
   include/seatui/student/navigation_canvas.hpp
+  include/seatui/student/book_search.hpp
   include/seatui/admin/admin_window.hpp
   include/seatui/widgets/card_dialog.hpp
   # judger
@@ -47,6 +67,7 @@ qt_add_executable(Library_System
   # 学生端
   src/student_app/student_window.cpp
   src/student_app/navigation_canvas.cpp
+  src/student_app/book_search.cpp
   # 管理端
   src/admin_app/admin_window.cpp
   # 公共小部件
@@ -137,6 +158,7 @@ if(BUILD_VISION)
     src/vision_core/Snapshotter.cpp
     src/vision_core/Types.cpp
     src/vision_core/VisionA.cpp
+    src/vision_core/VisionClient.cpp
   )
 
   target_include_directories(vision
@@ -196,12 +218,21 @@ if(BUILD_VISION)
   target_link_libraries(Library_System PRIVATE vision)
 endif()
 
+
 # ===================== 9) 运行期资源拷贝 =====================
 add_custom_command(TARGET Library_System POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_directory
           ${CMAKE_SOURCE_DIR}/assets/vision
           $<TARGET_FILE_DIR:Library_System>/assets/vision
   COMMENT "Copy assets/vision to runtime output"
+)
+
+# 拷贝 Input 目录到可执行文件所在目录（供图书查询使用）
+add_custom_command(TARGET Library_System POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+          ${CMAKE_SOURCE_DIR}/Input
+          $<TARGET_FILE_DIR:Library_System>/Input
+  COMMENT "Copy Input to runtime output (books.txt)"
 )
 
 # 如果 judger_cli 也需要资源文件，可以添加类似的拷贝命令

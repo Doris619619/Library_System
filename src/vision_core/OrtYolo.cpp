@@ -1,10 +1,8 @@
 // 单一实现：支持 fake_infer 生成少量随机框，便于演示
 
-//#include "vision/OrtYolo.h"
+#include "vision/OrtYolo.h"
 #include <random>
 #include <vector>
-
-#include "seatui/vision/OrtYolo.h"
 
 namespace vision {
     // OrtYoloDetector initializor
@@ -88,7 +86,7 @@ namespace vision {
         
         // 2/ Preprocess (bgr->rgb, hwc([h,w,3])->nchw(r,g,b), normalize)
         if (resized_rgb.empty() || resized_rgb.cols != opt_.input_w || resized_rgb.rows != opt_.input_h) {
-            std::cout << "[INFO] src/vision/OrtYolo.cpp: Input image size mismatch. \n  Expected "
+            std::cout << "[OrtYoloDetector] src/vision/OrtYolo.cpp: Input image size mismatch. \n  Expected "
                  << "width " << opt_.input_w << " and height " << opt_.input_h << ", got width "  // expected 640*640
                  << resized_rgb.cols << " and height " << resized_rgb.rows << "." << std::endl;
             return {};
@@ -120,7 +118,7 @@ namespace vision {
             input_shape.size()          // size_t shape_len
         );
 
-        std::cout << "[OrtYoloDetector] Running inference.\n";
+        std::cout << "[OrtYoloDetector] Running inference...\n";
 
         // 4/ Inference run
         std::vector<const char*> input_names = {input_name};
@@ -153,7 +151,7 @@ namespace vision {
         std::cout << "[OrtYoloDetector] Postprocessing output to extract detections.\n";
 
         for (int i = 0; i < num_boxes; ++i) {
-            // YOLOv8 output layout: each column is a box, first 4 rows are [cx,cy,w,h], last 80 rows are class scores
+            // YOLOv8 output layout: each column is a box, first 4 rows are [cx,cy,w,h], last 80 rows are class scores (only 18 classes in this model)
             float cx = output_data[i];                      // center x (relative to 640*640)
             float cy = output_data[num_boxes + i];          // center y
             float w  = output_data[2 * num_boxes + i];      // width
@@ -167,7 +165,7 @@ namespace vision {
 
             //std::cout << "[OrtYoloDetector] Finding max class score for box " << i << ".\n";
 
-            for (int c = 0; c < 18; ++c) {  // 80 COCO classes
+            for (int c = 0; c < 18; ++c) {  // 18 COCO classes
                 float score = output_data[(4 + c) * num_boxes + i];
 
                 //std::cout << "[OrtYoloDetector] Class " << c << " score for box " << i << ": " << score << "\n";

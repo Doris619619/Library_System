@@ -8,6 +8,10 @@
 #include <QGuiApplication>  // ← 必须：提供 primaryScreen() 的声明
 #include <QScreen>
 
+//与数据库连接需要的
+#include <seatui/ws/ws_hub.hpp>
+#include "../src/db_core/SeatDatabase.h"
+
 // 高分屏与位图设置（需在 QApplication 前设置）
 static void initHiDpi() {
     QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
@@ -109,7 +113,11 @@ static void applyGlobalStyle(QApplication& app) {
 int main(int argc, char *argv[]) {
     initHiDpi();
     QApplication app(argc, argv);
-
+    
+    // C部分——打开数据库（使用你代码中的默认路径与建表逻辑）
+    //auto& db = SeatDatabase::getInstance();  // 单例默认路径见你的头文件
+    //db.initialize();
+    
     // 建议改为 true：当最后一个窗口关闭时退出应用
     app.setQuitOnLastWindowClosed(true);
 

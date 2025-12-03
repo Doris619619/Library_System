@@ -4,13 +4,8 @@
 #include <opencv2/imgproc.hpp>
 #include <nlohmann/json.hpp>
 #include <fstream>
-//#include "vision/SeatRoi.h"
-#include "seatui/vision/SeatRoi.h"
-
-//#include <nlohmann/json.hpp>
-//#include "third_party/nlohmann/json.hpp"
-#include "../../../third_party/nlohmann/json.hpp"
-
+#include "vision/SeatRoi.h"
+#include <nlohmann/json.hpp>
 #include <fstream>
 #include <algorithm>
 

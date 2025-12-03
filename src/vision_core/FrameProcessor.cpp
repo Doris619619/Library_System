@@ -1,39 +1,24 @@
-
 #include <filesystem>
 #include <iostream>
 #include <iomanip>
 #include <string>
 #include <algorithm>
 #include <set>
-//#include "vision/VisionA.h"
-//#include "VisionA.h"
-#include "seatui/vision/VisionA.h"
-#include "seatui/vision/Publish.h"
-#include "seatui/vision/Config.h"
-#include "seatui/vision/Types.h"
-
-/*
-#include "vision/FrameProcessor.h"
-#include "seatui/vision/FrameProcessor.h"
-#include "seatui/vision/VisionA.h"
-#include "seatui/vision/Publish.h"
-#include "seatui/vision/Config.h"
-#include "seatui/vision/Types.h"
-*/
-
-#include "seatui/vision/FrameProcessor.h"
-#include "seatui/vision/VisionA.h"
-#include "seatui/vision/Publish.h"
-#include "seatui/vision/Config.h"
-#include "seatui/vision/Types.h"
-
-
-
-#include <opencv2/opencv.hpp>
-//#include <filesystem>
 #include <chrono>
 #include <fstream>
 #include <cstddef>
+#include <opencv2/opencv.hpp>
+#include <opencv2/imgproc.hpp>
+
+#include "vision/VisionA.h"
+#include "vision/Publish.h"
+#include "vision/Config.h"
+#include "vision/Types.h"
+#include "vision/FrameProcessor.h"
+#include "vision/SeatRoi.h"
+#include "vision/OrtYolo.h"
+#include "vision/Mog2.h"
+#include "vision/Snapshotter.h"
 
 namespace fs = std::filesystem;
 
@@ -62,7 +47,7 @@ namespace vision {
   @note - record annotated frame and output in the jsonl file
   @note - DO NOT responsible for judging whether to save-in-disk, return bool for handled or not
 */
-bool vision::FrameProcessor::onFrame(
+bool FrameProcessor::onFrame(
     int frame_index, 
     const cv::Mat& bgr, 
     double /*t_sec*/, 
@@ -95,25 +80,38 @@ bool vision::FrameProcessor::onFrame(
     // annotation imlementation
 
     // record annotated frame
-    auto stem = input_path.stem().string();
-    char buf[64];
-    std::snprintf(buf, sizeof(buf), "%s_%06d.jpg", stem.c_str(), frame_index);
-    std::string annotated_path = (std::filesystem::path(annotated_frames_dir) / buf).string();
-    //cv::imwrite(annotated_path, vis);
-    std::string line = seatFrameStatesToJsonLine(states, ts, frame_index-1, input_path.string(), annotated_path);
-    ofs << line << "\n";
-    {
-        std::ofstream lf(latest_frame_file, std::ios::trunc);
-        if (lf) lf << line << "\n";
+    bool is_isolated_demo = false;
+
+    if (is_isolated_demo) {  // isolated demo, not push to Library_System repo yet
+        auto stem = input_path.stem().string();
+        char buf[64];
+        std::snprintf(buf, sizeof(buf), "%s_%06d.jpg", stem.c_str(), frame_index);
+        std::string annotated_path = (std::filesystem::path(annotated_frames_dir) / buf).string();
+        //cv::imwrite(annotated_path, vis);
+        std::string line = seatFrameStatesToJsonLine(states, ts, frame_index-1, input_path.string(), annotated_path);
+        ofs << line << "\n";
+        {
+            std::ofstream latest_frame_ofs(latest_frame_file, std::ios::trunc);
+            if (latest_frame_ofs) latest_frame_ofs << line << "\n";
+        }
+    } else {  // works as method called in Library_System repo
+        // 由于现在只需要固定路径写入帧座位状态记录，不需入库图像，因此此处仅进行帧座位状态记录。固定路径为 ./out/000000.jsonl
+        std::string line = seatFrameStatesToJsonLine(states, ts, frame_index - 1, input_path.string(), "");
+        std::string current_frame_jsonl_ofs_path = getFrameJsonlPath("./out", frame_index - 1);
+        std::ofstream current_ofs(current_frame_jsonl_ofs_path, std::ios::app);
+        if (current_ofs) {
+            current_ofs << line << "\n";
+            current_ofs.close();
+        }
     }
+
     ++processed;
 
-    // when will return false? 
     return true;
 }
 
 // Stream Processing Video
-size_t vision::FrameProcessor::streamProcess(
+size_t FrameProcessor::streamProcess( 
     const std::string& video_path,         // video file path
     const std::string& latest_frame_dir,   // output states parent path                        
     VisionA& vision,                       // VisionA
@@ -128,7 +126,7 @@ size_t vision::FrameProcessor::streamProcess(
     cv::VideoCapture cap(video_path);
     if (!cap.isOpened()) {  // open video failed
         std::cerr << "[FrameProcessor] Failed to open video: " << video_path << "\n";
-        return false;
+        return 0;
     }
 
     // derive frame sample args
@@ -168,7 +166,7 @@ size_t vision::FrameProcessor::streamProcess(
     std::cout << "[FrameProcessor] Streaming video mode. Iterating frames...\n";
 
     // streaming video: Extract and Process Frame-by-Frame from Video
-    for (int idx = start_frame, sample_cnt = 0; idx < original_total_frames, sample_cnt < sample_cnt_ub; idx += sample_stepsize, sample_cnt++) {
+    for (int idx = start_frame, sample_cnt = 0; idx < original_total_frames && sample_cnt < sample_cnt_ub; idx += sample_stepsize, sample_cnt++) {
         
         // test iteration
         std::cout << "[FrameProcessor] Processing frame index: " << idx << "\n";
@@ -236,9 +234,10 @@ size_t vision::FrameProcessor::streamProcess(
 }
 
 // Bulk Extracting Video Frames 批量提取视频帧为图像文件
-size_t vision::FrameProcessor::bulkExtraction(
+size_t FrameProcessor::bulkExtraction(
     const std::string& video_path,
     double sample_fps,                             // sampling fps = extract_fps, which is the program input arg
+    size_t max_process_frames,                      // maximum frames to process
     const std::string& out_dir,                    // extract to data/frames/frames_vNNN/
     int start_frame,
     int end_frame,
@@ -332,7 +331,7 @@ size_t vision::FrameProcessor::bulkExtraction(
 *
 *   @return number of frames processed 处理的帧数
 */
-size_t vision::FrameProcessor::bulkProcess(
+size_t FrameProcessor::bulkProcess(
     const std::string& video_path,                   // 
     const std::string& latest_frame_dir,             // 
     const VisionConfig& cfg,                         // VisionConfig used by onFrame
@@ -364,7 +363,7 @@ size_t vision::FrameProcessor::bulkProcess(
     }
 
     // bulk extract frames (with sample)
-    size_t extracted = bulkExtraction(video_path, sample_fps, actual_img_dir, start_frame, end_frame, jpeg_quality, filename_prefix);
+    size_t extracted = bulkExtraction(video_path, sample_fps, max_process_frames, actual_img_dir, start_frame, end_frame, jpeg_quality, filename_prefix);
     if (extracted == 0) return 0;
 
     // set stepsize 
@@ -455,11 +454,11 @@ size_t vision::FrameProcessor::bulkProcess(
 *  
 *  @return  number of frames processed 处理的帧数
 */
-size_t vision::FrameProcessor::imageProcess(
+size_t FrameProcessor::imageProcess(
     const std::string& image_path,              // images directory path string
     const std::string& latest_frame_dir,        // output states parent path
     std::ofstream& ofs,                         // output file stream
-    const VisionConfig& cfg,                    // VisionConfig
+    const vision::VisionConfig& cfg,                    // VisionConfig
     VisionA& vision,                            // VisionA
     size_t max_process_frames,                  // max process frames
     int sample_fp100,                           // frames to sample per 100 images
@@ -597,6 +596,8 @@ static double safe_fps(cv::VideoCapture& cap) {
     return original_fps;
 }
 
+
+
 // count files in specific directory
 size_t vision::FrameProcessor::countFilesInDir(const std::string& dir_path) {
     std::error_code error_code;
@@ -641,7 +642,7 @@ int vision::FrameProcessor::getStepsize(size_t image_count, int sample_fp100) {
 }
 
 // get extraction output directory
-std::string FrameProcessor::getExtractionOutDir(const std::string& out_dir){
+std::string vision::FrameProcessor::getExtractionOutDir(const std::string& out_dir){
     std::filesystem::path frames_root = std::filesystem::path((out_dir.empty()) ? "./runtime/frames" : out_dir);
     std::error_code error_code;
     if (!std::filesystem::exists(out_dir)) { // output directory not exists
@@ -677,7 +678,6 @@ std::string FrameProcessor::getExtractionOutDir(const std::string& out_dir){
     //return extract_dir.string();
     return frames_root.string();
 }
-
 
 // judge if is video by extension
 bool vision::FrameProcessor::isVideoFile(const std::string& file_path_string) {

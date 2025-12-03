@@ -1,9 +1,5 @@
-//#include "vision/Types.h"
-#include "seatui/vision/Types.h"
-
-//#include <nlohmann/json.hpp>
-//#include "third_party/nlohmann/json.hpp"
-#include "../../../third_party/nlohmann/json.hpp"
+#include "vision/Types.h"
+#include <nlohmann/json.hpp>
 
 namespace vision {
 
@@ -34,7 +30,8 @@ std::string seatFrameStatesToJsonLine(
     int64_t ts_ms,
     int64_t frame_index,
     const std::string& image_path,
-    const std::string& annotated_path) {
+    const std::string& annotated_path
+) {
     nlohmann::json root;
     root["ts_ms"] = ts_ms;
     root["frame_index"] = frame_index;
