@@ -29,7 +29,7 @@ SeatStateJudger::SeatStateJudger()
         db_->initialize();
 
         // 插入初始化的座位数据
-        DatabaseInitializer dbInit;
+        DatabaseInitializer dbInit(*db_);  // 传入数据库引用
         bool success = dbInit.insertSampleSeats();
         if (success) {
             std::cout << "[B] Successfully inserted sample seats into database." << std::endl;
