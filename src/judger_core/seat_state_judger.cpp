@@ -1,5 +1,6 @@
 #include "seatui/judger/seat_state_judger.hpp"
 #include "../db_core/SeatDatabase.h"
+#include "../db_core/DatabaseInitializer.h"  //添加这个用于初始化座位插入
 
 #include <sstream>
 #include <iomanip>
@@ -26,6 +27,16 @@ SeatStateJudger::SeatStateJudger()
     try {
         db_ = &SeatDatabase::getInstance();
         db_->initialize();
+
+        // 插入初始化的座位数据
+        DatabaseInitializer dbInit;
+        bool success = dbInit.insertSampleSeats();
+        if (success) {
+            std::cout << "[B] Successfully inserted sample seats into database." << std::endl;
+        } else {
+            std::cout << "[B] Failed to insert sample seats." << std::endl;
+        }
+        
     } catch (const std::exception& e) {
         std::cout << "[B] SeatDatabase initialization failed " << e.what() << std::endl;
         db_ = nullptr;
