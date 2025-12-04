@@ -268,18 +268,26 @@ void SeatStateJudger::processAData(
     string occupancy_state = seat_j.value("occupancy_state", string("FREE"));
 
     // 判定 current status
-    int current_status = 0; // 0=UNSEATED,1=SEATED,2=ANOMALY_OCCUPIED
-    if (occupancy_state == "PERSON" || person_count > 0) {
+    int current_status = 0; // 0=UNSEATED,1=SEATED,2=OCCUPIED
+
+    // ---- Case 1：有人 → 永远是 1 ----
+    if (person_count > 0 || occupancy_state == "PERSON") {
         current_status = 1;
         state.confidence = seat_j.value("person_conf", 0.95f);
-        anomaly_occupied_duration_[state.seat_id] = 0;
-    } else if (occupancy_state == "OBJECT_ONLY" || (object_count > 0 && person_count == 0)) {
-        // 安全累加：用限制后的 time_diff_sec
+        anomaly_occupied_duration_[state.seat_id] = 0;  // reset
+    }
+
+    // ---- Case 2：有物没人 → 2（只是在阈值前不报警）----
+    else if (object_count > 0 || occupancy_state == "OBJECT_ONLY") {
+
+        // 安全累加时间（限制单帧增量）
         anomaly_occupied_duration_[state.seat_id] += time_diff_sec;
+        current_status = 2;
+
+        // 到达阈值才触发报警
         if (anomaly_occupied_duration_[state.seat_id] >= ANOMALY_THRESHOLD_SECONDS) {
-            current_status = 2;
             state.confidence = seat_j.value("object_conf", 0.85f);
-            // create alert
+
             B2CD_Alert alert;
             alert.alert_id = state.seat_id + "_" + a_data.timestamp;
             alert.seat_id = state.seat_id;
@@ -288,10 +296,11 @@ void SeatStateJudger::processAData(
             alert.timestamp = a_data.timestamp;
             alert.is_processed = false;
             alerts.push_back(alert);
-        } else {
-            current_status = 0;
         }
-    } else {
+    }
+
+    // ---- Case 3：无物无人 → 0 ----
+    else {
         anomaly_occupied_duration_[state.seat_id] = 0;
         current_status = 0;
     }
