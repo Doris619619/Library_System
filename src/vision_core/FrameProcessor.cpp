@@ -98,7 +98,7 @@ bool FrameProcessor::onFrame(
         // 由于现在只需要固定路径写入帧座位状态记录，不需入库图像，因此此处仅进行帧座位状态记录。固定路径为 ./out/000000.jsonl
         std::string line = seatFrameStatesToJsonLine(states, ts, frame_index - 1, input_path.string(), "");
         std::string current_frame_jsonl_ofs_path = getFrameJsonlPath("../../out", frame_index - 1);
-        std::ofstream current_ofs(current_frame_jsonl_ofs_path, std::ios::app);
+        //std::ofstream current_ofs(current_frame_jsonl_ofs_path, std::ios::app);
         //if (current_ofs) {
         //    current_ofs << line << "\n";
         //    current_ofs.close();
@@ -111,6 +111,7 @@ bool FrameProcessor::onFrame(
         std::ofstream latest_frame_ofs(latest_frame_file, std::ios::trunc);
         if (current_ofs) {
             current_ofs << line << "\n";
+            current_ofs.close();
         }
         if (latest_frame_ofs) {
             latest_frame_ofs << line << "\n";
