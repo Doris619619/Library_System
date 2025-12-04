@@ -99,9 +99,21 @@ bool FrameProcessor::onFrame(
         std::string line = seatFrameStatesToJsonLine(states, ts, frame_index - 1, input_path.string(), "");
         std::string current_frame_jsonl_ofs_path = getFrameJsonlPath("./out", frame_index - 1);
         std::ofstream current_ofs(current_frame_jsonl_ofs_path, std::ios::app);
+        //if (current_ofs) {
+        //    current_ofs << line << "\n";
+        //    current_ofs.close();
+        //}
+        // 直接写入 jsonl 文件，不再使用临时文件重命名策略（避免出现重命名后内容为空的问题）
+        // 保留原先代码以注释形式：
+        // std::string temp_ofs_path = getFrameJsonlPath("./out", frame_index - 1) + ".tmp";
+        // std::ofstream temp_ofs(temp_ofs_path, std::ios::app);
+        std::ofstream current_ofs(current_frame_jsonl_ofs_path, std::ios::app);
+        std::ofstream latest_frame_ofs(latest_frame_file, std::ios::trunc);
         if (current_ofs) {
             current_ofs << line << "\n";
-            current_ofs.close();
+        }
+        if (latest_frame_ofs) {
+            latest_frame_ofs << line << "\n";
         }
     }
 
