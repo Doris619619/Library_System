@@ -55,10 +55,10 @@ bool DatabaseInitializer::clearExistingData() {
 bool DatabaseInitializer::insertSampleSeats() {
     try {
         // 安静学习区 (quiet)
-        database_.insertSeat("S1", 100, 100, 50, 50);
-        database_.insertSeat("S2", 200, 100, 50, 50);
-        database_.insertSeat("S3",  300, 100, 50, 50);
-        database_.insertSeat("S4",  400, 100, 50, 50);
+        database_.insertSeat("S1", 177, 584, 225, 260);
+        database_.insertSeat("S2", 428, 525, 225, 228);
+        database_.insertSeat("S3", 272, 411, 167, 112);
+        database_.insertSeat("S4",  87, 454, 169, 176);
 
         return true;
 
