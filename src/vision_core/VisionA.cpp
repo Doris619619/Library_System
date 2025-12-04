@@ -74,6 +74,9 @@ namespace vision {
         policy.heartbeat_ms    = cfg.snapshot_heartbeat_ms;
         policy.jpg_quality     = cfg.snapshot_jpg_quality;
         impl_->snapshotter.reset(new Snapshotter(cfg.snapshot_dir, policy));
+
+        // 输出VisionA配置内的座位表绝对路径与座位计数，检测座位计数是否准确（按照demo应当为4）
+        std::cout << "[VisionA] Seats file abs: " << std::filesystem::absolute(cfg.seats_json) << ", seatCount=" << vision.seatCount() << std::endl;
     }
 
     VisionA::~VisionA() = default;
