@@ -1,10 +1,16 @@
 # Vision configuration file
 seats_json: "assets/vision/config/demo_seats.json"
-<<<<<<< HEAD
-model_path: "data/models/person01.onnx"  # fine-tuned single-class person model
-=======
-model_path: "assets/vision/weights/person01.onnx"  # fine-tuned single-class person model
->>>>>>> 5910e76 (Finished vision new part packing-in)
+
+# model paths
+#model_path: "data/models/person01.onnx"              # Single-class person model (old in vision path)
+#model_path: "assets/vision/weights/person01.onnx"    # Single-class person model
+model_path: "assets/vision/weights/fine_tune02.onnx" # Multi-class model (both person and objects)
+
+# NOTE: turn true ALL the ports below when require only use single multi-class model:
+# ./include/seatui/vision/Config.h - use_single_multiclass_model
+# ./assets/vision/config/vision.yml - use_single_multiclass_model
+use_single_multiclass_model: true
+
 vision_yaml: "assets/vision/config/vision.yml"
 log_dir: "logs"
 snapshot_dir: "cache/snap"
@@ -14,16 +20,19 @@ annotated_frames_dir: "runtime/frames"
 input_w: 640
 input_h: 640
 
-conf_thres_person: 0.6
-conf_thres_person_low: 0.4
-conf_thres_object: 0.5
-nms_iou: 0.45
-iou_seat_intersect: 0.1
-mog2_fg_ratio_thres: 0.15
+conf_thres_person: 0.60
+conf_thres_person_low: 0.50
+conf_thres_object: 0.361
+nms_iou: 0.50
+iou_seat_intersect: 0.30
+mog2_fg_ratio_thres: 0.10
 
 snapshot_jpg_quality: 90
 snapshot_min_interval_ms: 5000
 snapshot_on_change_only: true
 snapshot_heartbeat_ms: 60000
 
-object_allow: [24, 26, 28, 32, 39, 56, 57, 60, 62, 63, 64, 65, 66, 67, 73, 74, 75, 76, 77, 78, 79, 80, 84]
+
+object_allow: [24, 26, 28, 32, 39, 63, 64, 65, 66, 67, 73, 76]
+#object_allow: [24, 26, 28, 32, 39, 63, 64, 65, 66, 67, 73, 76, 78, 79, 80, 84]
+#object_allow: [24, 26, 28, 32, 39, 56, 57, 60, 62, 63, 64, 65, 66, 67, 73, 74, 75, 76, 77, 78, 79, 80, 84]
