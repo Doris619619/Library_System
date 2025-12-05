@@ -96,47 +96,6 @@ bool FrameProcessor::onFrame(
         }
     } else {  // works as method called in Library_System repo
         // 由于现在只需要固定路径写入帧座位状态记录，不需入库图像，因此此处仅进行帧座位状态记录。固定路径为 ./out/000000.jsonl
-        //std::string line = seatFrameStatesToJsonLine(states, ts, frame_index - 1, input_path.string(), "");
-        //std::string current_frame_jsonl_ofs_path = getFrameJsonlPath("../out", frame_index - 1);
-        //std::ofstream current_ofs(current_frame_jsonl_ofs_path, std::ios::app);
-        //if (current_ofs) {
-        //    current_ofs << line << "\n";
-        //    current_ofs.close();
-        //}
-        // 直接写入 jsonl 文件，不再使用临时文件重命名策略（避免出现重命名后内容为空的问题）
-        // 保留原先代码以注释形式：
-        // std::string temp_ofs_path = getFrameJsonlPath("./out", frame_index - 1) + ".tmp";
-        // std::ofstream temp_ofs(temp_ofs_path, std::ios::app);
-        //std::ofstream current_ofs(current_frame_jsonl_ofs_path, std::ios::app);
-        //std::ofstream latest_frame_ofs(latest_frame_file, std::ios::trunc);
-        // 写入策略：若文件已存在且非空，则覆写（truncate）；否则追加（append）
-///********************
-      // std::ios::openmode write_mode = std::ios::app;
-        // try {
-        //     if (std::filesystem::exists(current_frame_jsonl_ofs_path)) {
-        //         std::error_code error_code;
-        //         auto sz = std::filesystem::file_size(current_frame_jsonl_ofs_path, error_code);
-        //         if (!error_code && sz > 0) {
-        //             write_mode = std::ios::trunc;
-        //         }
-        //     }
-        // } catch (...) {
-        //     // 如果查询异常，保持默认的 append
-        //     std::cerr << "[onFrame] Failed to erase the original records at vision::FrameProcessor::onFrame(...) (line 113-125)\n";
-        //     write_mode = std::ios::trunc;        // guarantee erase
-        // }
-        // std::ofstream current_ofs(current_frame_jsonl_ofs_path, write_mode);
-        // std::ofstream latest_frame_ofs(latest_frame_file, std::ios::trunc);
-        // if (current_ofs) {
-        //     current_ofs << line << "\n";
-        //     current_ofs.close();
-        // }
-        // if (latest_frame_ofs) {
-        //     latest_frame_ofs << line << "\n";
-        // }
-///********************
-
-        // 由于现在只需要固定路径写入帧座位状态记录，不需入库图像，因此此处仅进行帧座位状态记录。固定路径为 ./out/000000.jsonl
         std::string line = seatFrameStatesToJsonLine(states, ts, frame_index - 1, input_path.string(), "");
         std::string current_frame_jsonl_ofs_path = getFrameJsonlPath("../../out", frame_index - 1);
         // 写入策略：若文件已存在且非空，则覆写（truncate）；否则追加（append）
