@@ -121,6 +121,8 @@ bool FrameProcessor::onFrame(
             }
         } catch (...) {
             // 如果查询异常，保持默认的 append
+            std::cerr << "[onFrame] Failed to erase the original records at vision::FrameProcessor::onFrame(...) (line 113-125)\n";
+            write_mode = std::ios::trunc;        // guarantee erase
         }
         std::ofstream current_ofs(current_frame_jsonl_ofs_path, write_mode);
         std::ofstream latest_frame_ofs(latest_frame_file, std::ios::trunc);
