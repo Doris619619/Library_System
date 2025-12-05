@@ -329,17 +329,13 @@ void SeatStateJudger::processAData(
     last_seat_status_[state.seat_id] = current_status;
     last_seat_status_duration_[state.seat_id] = state.status_duration;
 
-    // 事件：只在状态发生变化或出现 alert 时生成事件（更稳健）
-    if (status_changed || !alerts.empty()) {
-        B2C_SeatEvent event;
-        event.seat_id = state.seat_id;
-        event.state = stateToStr(current_status);
-        event.timestamp = a_data.timestamp;
-        event.duration_sec = state.status_duration;
-        out_event = event;
-    } else {
-        out_event.reset();
-    }
+    
+    B2C_SeatEvent event;
+    event.seat_id = state.seat_id;
+    event.state = stateToStr(current_status);
+    event.timestamp = a_data.timestamp;
+    event.duration_sec = state.status_duration;
+    out_event = event;
 
     // snapshot
     out_snapshot.seat_id = state.seat_id;
