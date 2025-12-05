@@ -109,6 +109,21 @@ bool FrameProcessor::onFrame(
         // std::ofstream temp_ofs(temp_ofs_path, std::ios::app);
         std::ofstream current_ofs(current_frame_jsonl_ofs_path, std::ios::app);
         std::ofstream latest_frame_ofs(latest_frame_file, std::ios::trunc);
+        // 写入策略：若文件已存在且非空，则覆写（truncate）；否则追加（append）
+        std::ios::openmode write_mode = std::ios::app;
+        try {
+            if (std::filesystem::exists(current_frame_jsonl_ofs_path)) {
+                std::error_code error_code;
+                auto sz = std::filesystem::file_size(current_frame_jsonl_ofs_path, error_code);
+                if (!error_code && sz > 0) {
+                    write_mode = std::ios::trunc;
+                }
+            }
+        } catch (...) {
+            // 如果查询异常，保持默认的 append
+        }
+        std::ofstream current_ofs(current_frame_jsonl_ofs_path, write_mode);
+        std::ofstream latest_frame_ofs(latest_frame_file, std::ios::trunc);
         if (current_ofs) {
             current_ofs << line << "\n";
             current_ofs.close();
