@@ -123,8 +123,16 @@ int main(int argc, char *argv[]) {
     if (!dir.cdUp()) {
         QMessageBox::critical(nullptr, "错误", "无法访问上级目录"); return -1;
     }
-    const QString outputDir = dir.path() + "/out";
+    //const QString outputDir = dir.path() + "/out";
+
+
+    // const QString outputDir = QDir::cleanPath("D:/CSC3002/Library_System/build_vs_all/out");
+    const QString outputDir = QDir::cleanPath("D:/CSC3002/Library_System/out");
     const QString dbPath    = outputDir + "/seating_system.db";
+    auto& db = SeatDatabase::getInstance(dbPath.toStdString()); // 保持显式传入
+
+    //const QString outputDir = QDir::cleanPath("D:/CSC3002/Library_System/build_vs_all/out");
+    //const QString dbPath    = outputDir + "/seating_system.db";
     if (!QDir().mkpath(outputDir)) {
         QMessageBox::critical(nullptr, "错误", "无法创建目录: " + outputDir); return -1;
     }
