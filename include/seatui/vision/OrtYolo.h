@@ -16,10 +16,11 @@ namespace vision {
     class OrtYoloDetector {
     public:
         struct SessionOptions {
-            std::string model_path = "assets/weights/person01.onnx";
+            std::string model_path = "assets/weights/fine_tune02.onnx";//"assets/weights/person01.onnx";
             int input_w = 640;
             int input_h = 640;
             bool fake_infer = true;
+            bool use_single_multiclass_model = true; // switch of only using one single multi-class model
         };
 
         explicit OrtYoloDetector(const SessionOptions& opt);
