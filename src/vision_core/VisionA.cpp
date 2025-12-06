@@ -65,7 +65,8 @@ namespace vision {
             cfg.model_path,
             cfg.input_w,
             cfg.input_h,
-            false
+            false,
+            cfg.use_single_multiclass_model
         }));
         // 初始化快照策略
         SnapshotPolicy policy;
@@ -109,7 +110,7 @@ namespace vision {
 
         std::cout << "[VisionA] Image resized for inference.\n";
 
-        // 2. 推理: chg RawDet -> BBox
+        // 3. 推理: chg RawDet -> BBox
         std::vector<RawDet> raw_detected;
         try {
             raw_detected = impl_->detector->infer(parsed_img);
@@ -125,6 +126,8 @@ namespace vision {
             }
             raw_detected.clear();
         }
+
+        // chg RawDet -> BBox
         std::vector<BBox> dets;
         dets.reserve(raw_detected.size());
         for (auto& r : raw_detected) {
@@ -144,7 +147,7 @@ namespace vision {
             dets.push_back(b);
         }
 
-        // 3. NMS：按类别做 NMS，减少重叠框
+        // 4. NMS：按类别做 NMS，减少重叠框
         const float nms_iou = std::max(0.f, std::min(1.f, impl_->cfg.nms_iou));
         if (!dets.empty() && nms_iou > 0.f) {
             dets = nmsClasswise(dets, nms_iou);
@@ -152,7 +155,7 @@ namespace vision {
 
         std::cout << "[VisionA] Inference completed. Detected " << dets.size() << " objects (after NMS).\n";
 
-        // 4. 人与物简易分类
+        // 5. 人与物简易分类
         std::vector<BBox> persons, objects;   // persons boxes and objects boxes
         for (auto& b : dets) {
             if (b.cls_name == "person") persons.push_back(b);
@@ -165,7 +168,7 @@ namespace vision {
         impl_->last_persons = persons;
         impl_->last_objects = objects;
 
-        // 5. 座位归属: 根据多边形包含或 IoU 判定座位内元素
+        // 6. 座位归属: 根据多边形包含或 IoU 判定座位内元素
         auto iouSeat = [](const cv::Rect& seat, const cv::Rect& box) {
             int ix = std::max(seat.x, box.x);
             int iy = std::max(seat.y, box.y);
