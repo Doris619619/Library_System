@@ -65,6 +65,7 @@ VisionConfig VisionConfig::fromYaml(const std::string& yaml_path) {
         try_get(r, "dump_perf_log", c.dump_perf_log);
         try_get(r, "enable_async_snapshot", c.enable_async_snapshot);
         try_get(r, "yolo_variant", c.yolo_variant);
+        try_get(r, "use_single_multiclass_model", c.use_single_multiclass_model);
     } catch (...) {
         // keep defaults
     }
@@ -120,6 +121,7 @@ VisionConfig VisionConfig::fromJson(const std::string& json_path) {
         get_b("dump_perf_log", c.dump_perf_log);
         get_b("enable_async_snapshot", c.enable_async_snapshot);
         get_s("yolo_variant", c.yolo_variant);
+        get_b("use_single_multiclass_model", c.use_single_multiclass_model);
     } catch (...) {
         // keep defaults
     }
