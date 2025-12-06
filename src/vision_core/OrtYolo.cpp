@@ -1,5 +1,3 @@
-// 单一实现：支持 fake_infer 生成少量随机框，便于演示
-
 #include "vision/OrtYolo.h"
 #include <random>
 #include <vector>
@@ -30,8 +28,10 @@ namespace vision {
         try {
             session_ = std::make_unique<Ort::Session>(env_, model_path_w.c_str(), session_options_);
             ready_ = true;
+            std::cout << "[OrtYoloDetector] ONNX session created successfully with model: " << opt_.model_path << "\n"
+                      << "                  Single multiclass model infer mode: " << opt_.use_single_multiclass_model << "\n                  (line 32)\n";
         } catch (const std::exception& ex) {
-            std::cerr << "[OrtYoloDetector] Failed to create ONNX session: " << ex.what() << "\n";
+            std::cerr << "[OrtYoloDetector] Failed to create ONNX session: " << ex.what() << "\n                  (line 34)";
             ready_ = false; // remain not ready; infer() will return empty
         }
     }
@@ -57,16 +57,15 @@ namespace vision {
         }
 
         // ========= check ready ===========
-        std::cout << "[OrtYoloDetector] Checking if session is ready.\n";
+        std::cout << "[OrtYoloDetector] Checking if session is ready. (line 60)\n";
 
         if (!session_ || !OrtYoloDetector::isReady()) return {};
         
         // ========= real infer 流程框架 ===========
-        // TODO: 接入 ONNX Runtime 真实推理
         // 1/ Get I/O node info (name, shape=[batch, channels, heights, widths])
         Ort::AllocatorWithDefaultOptions allocator;         // use allocator to derive the 
         
-        std::cout << "[OrtYoloDetector] Preparing input and output node info.\n";
+        std::cout << "[OrtYoloDetector] Preparing input and output node info. (line 69)\n";
 
         //      attain input node info ("images", [1, 3, 640, 640])
         Ort::AllocatedStringPtr input_name_ptr = session_->GetInputNameAllocated(0, allocator);
@@ -93,7 +92,7 @@ namespace vision {
             return {};
         }
 
-        std::cout << "[OrtYoloDetector] Preprocessing input image.\n";
+        std::cout << "[OrtYoloDetector] Preprocessing input image. (line 96)\n";
 
         cv::Mat rgb;
         cv::cvtColor(resized_rgb, rgb, cv::COLOR_BGR2RGB);  // BGR → RGB
@@ -108,7 +107,7 @@ namespace vision {
             } // take the c channel of the (h, w) pixel of rgb
         }
 
-        //      input tensor prepare
+        // 3/   input tensor prepare
         std::vector<int64_t> input_shape = {1, 3, opt_.input_h, opt_.input_w};
         Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
         Ort::Value input_tensor = Ort::Value::CreateTensor<float>(
@@ -119,7 +118,7 @@ namespace vision {
             input_shape.size()          // size_t shape_len
         );
 
-        std::cout << "[OrtYoloDetector] Running inference...\n";
+        std::cout << "[OrtYoloDetector] Running inference... (line 122)\n";
 
         // 4/ Inference run
         std::vector<const char*> input_names = {input_name};
@@ -130,27 +129,27 @@ namespace vision {
             output_names.data(), 1                  // output count, cnt
         );
 
-        std::cout << "[OrtYoloDetector] Inference completed. Processing output tensors.\n";
+        std::cout << "[OrtYoloDetector] Inference completed. Processing output tensors. (line 133)\n";
 
         // 5/ Analysis output tensors
         float* output_data = output_tensors[0].GetTensorMutableData<float>();
         auto output_shape = output_tensors[0].GetTensorTypeAndShapeInfo().GetShape();
-        // 输出形状示例：
-        // - 单类简化： [1, 5, 8400] (attrs-first: [cx,cy,w,h,conf])
-        // - 多类 YOLOv8：[1, 84, 8400] (attrs-last: 4 + 80 classes)
 
         int num_boxes = static_cast<int>(output_shape.size()>=3 ? output_shape[2] : 0);
         int num_attrs = static_cast<int>(output_shape.size()>=2 ? output_shape[1] : 0);
 
-        std::cout << "[OrtYoloDetector] Number of boxes: " << num_boxes << ", Number of attributes: " << num_attrs << " (person) \n";
+        std::cout << "[OrtYoloDetector] Number of boxes: " << num_boxes << ", Number of attributes: " << num_attrs << " (infer line 145) \n";
 
         std::vector<RawDet> detect_results;
         const float conf_threshold = 0.25f;
 
-        std::cout << "[OrtYoloDetector] Postprocessing output to extract detections.\n";
+        std::cout << "[OrtYoloDetector] Postprocessing output to extract detections. (line 150)\n";
 
-        // ================= 布局自适应后处理 =================
-        if (num_attrs == 5) {          // A: 单类（人）简化导出：attrs-first [cx,cy,w,h,conf]
+        // 6/ Postprocessing
+        if (num_attrs == 5) {          // Single-class model: attrs-first [cx,cy,w,h,conf]
+
+            // report using A single class for person detection
+            std::cout << "[OrtYoloDetector] Using single-class person detection postprocessing. (line 156)\n";
             
             for (int i = 0; i < num_boxes; ++i) {
                 float cx = output_data[i];
@@ -163,12 +162,16 @@ namespace vision {
                     detect_results.push_back(det);
                 }
             }
-        } else if (num_attrs >= 6) {   // B: 多类（YOLOv8 风格）：attrs-last [cx,cy,w,h] + num_classes (可含 objness)
+        } else if (num_attrs >= 6) {   // Multi-class model: attrs-last [cx,cy,w,h] + num_classes (allow objness)
+
+            // report using B multi-class detection
+            std::cout << "[OrtYoloDetector] Using multi-class detection postprocessing.(line 172)\n";
             
             int num_classes = num_attrs - 4;
             bool has_objness = false;
             int cls_offset = 4;
             if (num_attrs == 85) { has_objness = true; cls_offset = 5; num_classes = 80; }
+            if (num_attrs == 14) { has_objness = false; cls_offset = 4; num_classes = 10; } // custom 10-class model with objness
             // 如果是 84，则 objness 合并到类分数；若是 85，则第 5 行是 objness
             for (int i = 0; i < num_boxes; ++i) {
                 float cx = output_data[i];
@@ -188,35 +191,36 @@ namespace vision {
                 }
             }
         } else {
-            std::cerr << "[OrtYoloDetector] Unexpected attributes count: " << num_attrs << "\n";
+            std::cerr << "[OrtYoloDetector] Unexpected attributes count: " << num_attrs << " (line 198)\n";
         }
 
-        std::cout << "[OrtYoloDetector] Total detections after filtering (person): " << detect_results.size() << "\n";
+        std::cout << "[OrtYoloDetector] Total detections after filtering: " << detect_results.size() << " (line 201)\n";
 
-        // ================= 可选：加载“物体模型”并合并结果（A 方案） =================
-        // 注意：不删除原有实现；此段为新增补丁，若存在 data/models/objects_yolov8n.onnx 则进行二次推理
-        // 当前使用的是存放于 ./assets/vision/weights/yolov8n.onnx 模型作为对帧作物品检测的模型 obj_model
+        // single multi-class model: early return
+        if (opt_.use_single_multiclass_model) {
+            return detect_results;
+        }
+ 
+        // ================= Two Models Inference (Person & Object) =================
 
-        // 此处尝试使用两个模型同时进行推理，一个微调过大模型推理当前帧的人，另一个预训练的模型推理物，相关数据合并输出
         static std::unique_ptr<Ort::Env> obj_env;
         static std::unique_ptr<Ort::SessionOptions> obj_opts;
         static std::unique_ptr<Ort::Session> obj_sess;
         
-        // 同时兼容两种默认路径：用户原始预训练模型 yolov8n_640.onnx 或 objects_yolov8n.onnx
-        static const std::string obj_model_path_a = "../../assets/vision/weights/objects_yolov8n.onnx";
+        static const std::string obj_model_path_a = "../../assets/vision/weights/fine_tune02.onnx";
         static const std::string obj_model_path_b = "../../assets/vision/weights/yolov8n_640.onnx";
         const std::string obj_model_path = std::filesystem::exists(obj_model_path_a) ? obj_model_path_a : obj_model_path_b;
 
         if (std::filesystem::exists(obj_model_path)) {
-            if (!obj_env) {obj_env = std::make_unique<Ort::Env>(ORT_LOGGING_LEVEL_WARNING, "YOLOv8n-obj"); std::cerr << "[OrtYoloDetector] Object model environment created as \"" << obj_model_path << "\".\n"; };
-            if (!obj_opts) { obj_opts = std::make_unique<Ort::SessionOptions>(); obj_opts->SetIntraOpNumThreads(1); std::cerr << "[OrtYoloDetector] Object model session options created as \"" << obj_model_path << "\".\n"; };
+            if (!obj_env) {obj_env = std::make_unique<Ort::Env>(ORT_LOGGING_LEVEL_WARNING, "YOLOv8n-obj"); std::cerr << "[OrtYoloDetector] Object model environment created as \"" << obj_model_path << "\". (line 216)\n"; };
+            if (!obj_opts) {obj_opts = std::make_unique<Ort::SessionOptions>(); obj_opts->SetIntraOpNumThreads(1); std::cerr << "[OrtYoloDetector] Object model session options created as \"" << obj_model_path << "\". (line 217)\n"; };
             if (!obj_sess) {
                 try {
                     std::wstring obj_model_w(obj_model_path.begin(), obj_model_path.end());
                     obj_sess = std::make_unique<Ort::Session>(*obj_env, obj_model_w.c_str(), *obj_opts);
-                    std::cerr << "[OrtYoloDetector] Object model session created as \"" << obj_model_path << "\".\n";
+                    std::cerr << "[OrtYoloDetector] Object model session created as \"" << obj_model_path << "\". (line 222)\n";
                 } catch (const std::exception& ex) {
-                    std::cerr << "[OrtYoloDetector] Failed to create object session: " << ex.what() << "\n";
+                    std::cerr << "[OrtYoloDetector] Failed to create object session: " << ex.what() << " (line 224)\n";
                 }
             }
 
@@ -224,7 +228,7 @@ namespace vision {
             if (obj_sess) {
 
                 // report construction of the object session
-                std::cout << "[OrtYoloDetector] Object model session loaded from: " << obj_model_path << "\n";
+                std::cout << "[OrtYoloDetector] Object model session loaded from: " << obj_model_path << " (line 232)\n";
 
                 // 复用已构造的 input_tensor
                 Ort::AllocatedStringPtr obj_input_name_ptr = obj_sess->GetInputNameAllocated(0, allocator);
@@ -232,14 +236,14 @@ namespace vision {
                 Ort::AllocatedStringPtr obj_output_name_ptr = obj_sess->GetOutputNameAllocated(0, allocator);
                 const char* obj_output_name = obj_output_name_ptr.get();
 
-                std::cout << "[OrtYoloDetector] Running inference on object model...\n";
+                std::cout << "[OrtYoloDetector] Running inference on object model... (line 240)\n";
 
                 // Run inference of object model
                 std::vector<const char*> obj_in_names = {obj_input_name};
                 std::vector<const char*> obj_out_names = {obj_output_name};
                 auto obj_outs = obj_sess->Run(Ort::RunOptions{nullptr}, obj_in_names.data(), &input_tensor, 1, obj_out_names.data(), 1);
 
-                std::cout << "[OrtYoloDetector] Object model inference completed. Processing output tensors.\n";
+                std::cout << "[OrtYoloDetector] Object model inference completed. Processing output tensors. (line 247)\n";
 
 
                 float* obj_data = obj_outs[0].GetTensorMutableData<float>();
@@ -248,8 +252,8 @@ namespace vision {
                 int obj_attrs = static_cast<int>(obj_shape.size()>=2 ? obj_shape[1] : 0);
 
                 // report output shape of the object model
-                std::cout << "[OrtYoloDetector] Object model output tensor shape: [" << obj_shape[0] << ", " << obj_shape[1] << ", " << obj_shape[2] << "]\n";
-                std::cout << "[OrtYoloDetector] Number of boxes: " << obj_boxes << ", Number of attributes: " << obj_attrs << " (object) \n";
+                std::cout << "[OrtYoloDetector] Object model output tensor shape: [" << obj_shape[0] << ", " << obj_shape[1] << ", " << obj_shape[2] << "] (line 256)\n";
+                std::cout << "[OrtYoloDetector] Number of boxes: " << obj_boxes << ", Number of attributes: " << obj_attrs << " (object) (line 257)\n";
 
                 // 默认按 YOLOv8 COCO 80 类处理
                 int obj_num_classes = std::max(0, obj_attrs - 4);
@@ -277,17 +281,6 @@ namespace vision {
             }
         }
 
-        // ================= B 预留接口 =================
-        // if (opt_.use_single_multiclass_model) {
-        //     // 当你完成“人+物”单模型微调并导出为多类 ONNX：
-        //     // 1) 关闭上面的对象模型并行分支；
-        //     // 2) 直接使用多类解码（已在上面 num_attrs>=6 的分支实现）；
-        //     // 即维持同一会话，解码人/物并返回 detect_results。
-        // } else {
-        //     // 当前执行 A 方案：人模型 + 可选物体模型（若文件存在则启用）
-        // }
-
         return detect_results;
     }
-
 } // namespace vision
