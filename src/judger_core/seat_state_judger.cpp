@@ -1,6 +1,6 @@
 #include "seatui/judger/seat_state_judger.hpp"
 #include "../db_core/SeatDatabase.h"
-#include "../db_core/DatabaseInitializer.h"  //添加这个用于初始化座位插入
+#include "../db_core/DatabaseInitializer.h"  
 
 #include <sstream>
 #include <iomanip>
@@ -21,15 +21,15 @@ static inline std::string normalizeSeatId(const std::string& raw) {
     return "S" + raw;
 }
 
-// ---------- Constructor ----------
+
 SeatStateJudger::SeatStateJudger()
 {
     try {
         db_ = &SeatDatabase::getInstance();
         db_->initialize();
 
-        // 插入初始化的座位数据
-        DatabaseInitializer dbInit(*db_);  // 传入数据库引用
+        // insert  initialized seat data
+        DatabaseInitializer dbInit(*db_);  // pass in database reference
         bool success = dbInit.insertSampleSeats();
         if (success) {
             std::cout << "[B] Successfully inserted sample seats into database." << std::endl;
@@ -43,7 +43,6 @@ SeatStateJudger::SeatStateJudger()
     }
 }
 
-// ---------- utils ----------
 int SeatStateJudger::SeatTimer::getElapsedSeconds() {
     if (!is_running) return 0;
     auto now = chrono::steady_clock::now();
@@ -99,8 +98,7 @@ float SeatStateJudger::calculateIoU(const Rect& rect1, const Rect& rect2) {
     return static_cast<float>(inter_area) / static_cast<float>(union_area);
 }
 
-// ---------- JSONL 批量读取（用于 run()） ----------
-// 说明：jsonl_path 应为 JSONL 文件的完整路径（例如由 run() 遍历得到的 entry.path().string()）
+
 bool SeatStateJudger::readJsonlFile(
     const string& jsonl_path,
     vector<vector<A2B_Data>>& batch_a2b_data,
@@ -110,38 +108,34 @@ bool SeatStateJudger::readJsonlFile(
     batch_seat_j.clear();
 
     if (jsonl_path.empty()) {
-        cout << "[BModule] Error: readJsonlFile got empty path" << endl;
+        cout << "[B] Error: readJsonlFile got empty path" << endl;
         return false;
     }
 
     if (!fs::exists(jsonl_path) || !fs::is_regular_file(jsonl_path)) {
-        cout << "[BModule] Error: JSONL file not found: " << jsonl_path << endl;
+        cout << "[B] Error: JSONL file not found: " << jsonl_path << endl;
         return false;
     }
 
     ifstream file(jsonl_path);
     if (!file.is_open()) {
-        cout << "[BModule] Error: Failed to open JSONL file: " << jsonl_path << endl;
+        cout << "[B] Error: Failed to open JSONL file: " << jsonl_path << endl;
         return false;
     }
 
     string line;
     int frame_count = 0;
 
-    // 将每个 JSONL 文件视为一帧（或一段数据），我们把它的所有 seat 条目当成一个 frame 的内容
     vector<A2B_Data> frame_a2b;
     vector<json> frame_seat_j;
 
-    // json 所在目录（如果 JSON 中包含相对路径，并且你需要解析它，可用 json_dir）
+    // json's current directory for relative paths
     fs::path json_dir = fs::path(jsonl_path).parent_path();
 
     while (getline(file, line)) {
         if (line.empty()) continue;
         try {
             json j = json::parse(line);
-
-            // NOTE: B 模块不需要读取图片或 snapshot，故不再尝试 imread。
-            // 我们只解析 JSON 中与座位状态相关的字段（seats / seat_id / person_count / object_count / occupancy_state 等）
 
             int frame_index = j.value("frame_index", 0);
             string timestamp = msToISO8601(j.value("ts_ms", 0LL));
@@ -155,7 +149,7 @@ bool SeatStateJudger::readJsonlFile(
                 A2B_Data a2b;
                 a2b.frame_id = frame_index;
                 a2b.timestamp = timestamp;
-                a2b.frame = Mat(); // 不加载图片，保持空
+                a2b.frame = Mat(); 
 
                 // seat_id
                 if (seat_j.contains("seat_id")) {
@@ -164,7 +158,7 @@ bool SeatStateJudger::readJsonlFile(
                     else a2b.seat_id = "unknown";
                 } else a2b.seat_id = "unknown";
 
-                // seat_roi（保留基本解析）
+                // seat_roi
                 int roi_x = seat_j.value("seat_roi", json::object()).value("x", 0);
                 int roi_y = seat_j.value("seat_roi", json::object()).value("y", 0);
                 int roi_w = seat_j.value("seat_roi", json::object()).value("w", 0);
@@ -172,7 +166,7 @@ bool SeatStateJudger::readJsonlFile(
                 if (roi_w <= 0 || roi_h <= 0) a2b.seat_roi = Rect(0,0,1,1);
                 else a2b.seat_roi = Rect(roi_x, roi_y, roi_w, roi_h);
 
-                // seat_poly（可选）
+                // seat_poly
                 a2b.seat_poly.clear();
                 if (seat_j.contains("seat_poly") && seat_j["seat_poly"].is_array()) {
                     for (auto& p : seat_j["seat_poly"]) {
@@ -223,16 +217,16 @@ bool SeatStateJudger::readJsonlFile(
                 ++frame_count;
             }
         } catch (const json::exception& e) {
-            cout << "[BModule] Error: Failed to parse JSONL line: " << e.what() << endl;
+            cout << "[B] Error: Failed to parse JSONL line: " << e.what() << endl;
             continue;
         }
     }
 
-    cout << "[BModule] Successfully read " << frame_count << " frames of batch data from " << jsonl_path << endl;
+    cout << "[B] Successfully read " << frame_count << " frames of batch data from " << jsonl_path << endl;
     return frame_count > 0;
 }
 
-// ---------- processAData: 关键逻辑（保持原样） ----------
+
 void SeatStateJudger::processAData(
     const A2B_Data& a_data,
     const json& seat_j,
@@ -241,7 +235,7 @@ void SeatStateJudger::processAData(
     B2C_SeatSnapshot& out_snapshot,
     optional<B2C_SeatEvent>& out_event
 ) {
-    // 初始化 state（基于 A2B_Data）
+    // initialize state
     state.seat_id = normalizeSeatId(a_data.seat_id);
     state.timestamp = a_data.timestamp;
     state.confidence = 0.90f;
@@ -251,40 +245,39 @@ void SeatStateJudger::processAData(
 
     int64_t current_ts_ms = seat_j.value("ts_ms", 0LL);
 
-    // 计算时间差（秒）
+    // time difference calculation
     int time_diff_sec = 0;
     if (last_seat_ts_.find(state.seat_id) != last_seat_ts_.end() && current_ts_ms > 0) {
         int64_t prev = last_seat_ts_[state.seat_id];
         time_diff_sec = static_cast<int>(std::max<int64_t>(0, (current_ts_ms - prev) / 1000));
     }
 
-    // --- 防护：避免单帧因 ts 跳变导致过大累加（例如帧丢失/延迟导致的一次性跳大）
-    const int MAX_INC_PER_FRAME = 5; // 每帧最多累加的秒数（可以根据实际调整）
+    // protection: Avoid excessive accumulation of single frames due to TS jumps
+    const int MAX_INC_PER_FRAME = 5; // t(max) that can be accumulated per frame (seconds)
     if (time_diff_sec > MAX_INC_PER_FRAME) time_diff_sec = MAX_INC_PER_FRAME;
 
-    // 读取检测信息
+    // read detection information
     int person_count = seat_j.value("person_count", 0);
     int object_count = seat_j.value("object_count", 0);
     string occupancy_state = seat_j.value("occupancy_state", string("FREE"));
 
-    // 判定 current status
-    int current_status = 0; // 0=UNSEATED,1=SEATED,2=OCCUPIED
+    // judge current status
+    int current_status = 0; // 0=Unseated,1=Seated,2=Occupied
 
-    // ---- Case 1：有人 → 永远是 1 ----
+    // case1：person detected
     if (person_count > 0 || occupancy_state == "PERSON") {
         current_status = 1;
         state.confidence = seat_j.value("person_conf", 0.95f);
         anomaly_occupied_duration_[state.seat_id] = 0;  // reset
     }
 
-    // ---- Case 2：有物没人 → 2（只是在阈值前不报警）----
+    // case2：no person but objects detected   
     else if (object_count > 0 || occupancy_state == "OBJECT_ONLY") {
 
-        // 安全累加时间（限制单帧增量）
         anomaly_occupied_duration_[state.seat_id] += time_diff_sec;
         current_status = 2;
 
-        // 到达阈值才触发报警
+        // when reach threshold -> trigger alarm
         if (anomaly_occupied_duration_[state.seat_id] >= ANOMALY_THRESHOLD_SECONDS) {
             state.confidence = seat_j.value("object_conf", 0.85f);
 
@@ -299,13 +292,13 @@ void SeatStateJudger::processAData(
         }
     }
 
-    // ---- Case 3：无物无人 → 0 ----
+    // case3: no objects/persons
     else {
         anomaly_occupied_duration_[state.seat_id] = 0;
         current_status = 0;
     }
 
-    // 更新持续时间（基于上一状态 duration）
+    // update duration
     int prev_status = -1;
     int prev_duration = 0;
     auto it_status = last_seat_status_.find(state.seat_id);
@@ -320,10 +313,9 @@ void SeatStateJudger::processAData(
         state.status_duration = time_diff_sec;
     }
 
-    // ---- 在更新 last_* 之前判断是否发生状态变化 ----
     bool status_changed = (prev_status == -1) ? true : (prev_status != current_status);
 
-    // 更新保留状态（在判断之后）
+    // persist state
     state.status = static_cast<B2CD_State::SeatStatus>(current_status);
     last_seat_ts_[state.seat_id] = current_ts_ms;
     last_seat_status_[state.seat_id] = current_status;
@@ -344,21 +336,19 @@ void SeatStateJudger::processAData(
     out_snapshot.timestamp = a_data.timestamp;
 }
 
-// ---------- run 主循环 ----------
 void SeatStateJudger::run(const string& jsonl_dir) {
     resetNeedStoreFrameIndexes();
 
-    // 目录路径，如果传空就用默认目录（从 Release 工作目录回溯到 Library_System/out）
+    // directory path
     string dir_path = jsonl_dir.empty() ? "../../out" : jsonl_dir;
     fs::path folder(dir_path);
 
     if (!fs::exists(folder) || !fs::is_directory(folder)) {
-        cout << "[Error] JSONL directory does not exist: " << dir_path << endl;
+        cout << "[B] Error: JSONL directory does not exist: " << dir_path << endl;
         return;
     }
 
-    cout << "[Info] B module started monitoring directory: " << fs::absolute(folder).string() << endl;
-    // ------ 主循环 ------
+    cout << "[B] Info: B module started monitoring directory: " << fs::absolute(folder).string() << endl;
     while (true) {
         try {
             for (auto& entry : fs::directory_iterator(folder)) {
@@ -382,7 +372,7 @@ void SeatStateJudger::run(const string& jsonl_dir) {
                     continue;
                 }
 
-                // 按帧处理（每个 JSONL 的每一行当作一帧）
+                // 1 line of JSONL = 1 frame
                 for (size_t f = 0; f < batch_a2b.size(); ++f) {
                     auto& frame_a2b  = batch_a2b[f];
                     auto& frame_j    = batch_seat_j[f];
@@ -402,7 +392,7 @@ void SeatStateJudger::run(const string& jsonl_dir) {
 
                         processAData(frame_a2b[i], frame_j[i], state, alerts, snapshot, event);
 
-                        // 写入数据库
+                        // write to DB
                         if (event.has_value() && db_) {
                             db_->insertSeatEvent(event->seat_id, event->state, event->timestamp, event->duration_sec);
                         }
@@ -413,7 +403,7 @@ void SeatStateJudger::run(const string& jsonl_dir) {
                             if (db_) db_->insertAlert(a.alert_id, a.seat_id, a.alert_type, a.alert_desc, a.timestamp, a.is_processed);
                         }
 
-                        // 日志
+                        // cout info
                         cout << "  Seat " << state.seat_id
                              << " : " << stateToStr((int)state.status)
                              << " dur=" << state.status_duration
@@ -429,7 +419,7 @@ void SeatStateJudger::run(const string& jsonl_dir) {
 
                     if (need_store_this_frame) {
                         need_store_frame_indexes_.insert(frame_id);
-                        cout << "[Info] Marked frame " << frame_id << " for storage" << endl;
+                        cout << "[B Info] Marked frame " << frame_id << " for storage" << endl;
                     }
 
                     cout << "-------------------------------------" << endl;
@@ -441,7 +431,7 @@ void SeatStateJudger::run(const string& jsonl_dir) {
             cout << "[B] Error while processing JSONL files: " << e.what() << endl;
         }
 
-        // 每 2 秒轮询目录
+        // sleep 2s
         this_thread::sleep_for(chrono::seconds(2));
     }
 }

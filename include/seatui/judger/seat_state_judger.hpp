@@ -10,10 +10,10 @@
 #include <optional>
 #include <chrono>
 
-// 不直接 include SeatDatabase.h（避免 header 依赖循环），在 cpp 中 include 实现头
+
 class SeatDatabase; // forward declare
 
-#include <json.hpp> // third_party/nlohmann/json.hpp provided by CMake include dir
+#include <json.hpp> 
 
 using json = nlohmann::json;
 using namespace cv;
@@ -29,7 +29,7 @@ public:
     SeatStateJudger();
     ~SeatStateJudger() = default;
 
-    // 主接口
+    
     void processAData(
         const struct A2B_Data& a_data,
         const json& seat_j,
@@ -45,7 +45,7 @@ public:
     );
 
     void run(const std::string& jsonl_path = "");
-    string stateToStr(int status_enum); // accepts B2CD_State::SeatStatus (int)
+    string stateToStr(int status_enum); // accepts B2CD_State::SeatStatus(int)
     string msToISO8601(int64_t ts_ms);
     bool readJsonlFile(
         const string& jsonl_path,
@@ -62,7 +62,7 @@ public:
     }
 
 private:
-    // 状态持久化容器（类成员，统一管理）
+    // state tracking
     unordered_map<string, int64_t> last_seat_ts_;
     unordered_map<string, int> last_seat_status_duration_;
     unordered_map<string, int> anomaly_occupied_duration_;
@@ -70,10 +70,11 @@ private:
 
     unordered_set<int> need_store_frame_indexes_;
 
-    // Database 引用（在 cpp 中初始化）
+    // DB reference
     SeatDatabase* db_; // pointer to avoid ctor-order issues
 
-    // 辅助工具
+    
+    // tracking seat status durations
     class SeatTimer {
     public:
         bool is_running = false;
@@ -87,4 +88,4 @@ private:
     std::unordered_set<std::string> processed_files_;
 };
 
-#endif // SEAT_STATE_JUDGER_HPP
+#endif 
