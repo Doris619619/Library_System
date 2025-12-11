@@ -74,14 +74,20 @@ bool DatabaseInitializer::insertSampleEvents() {
         std::string one_hour_ago = TimeUtils::addHours(current_time, -1);
         std::string two_hours_ago = TimeUtils::addHours(current_time, -2);
 
+        
+        for (const auto& seat_id : seat_ids) {
+            // 插入当前状态事件（所有座位都是 Unseated）
+            database_.insertSeatEvent(seat_id, "Unseated", current_time, 0);
+        }
+        
         // Insert some historical events
-        database_.insertSeatEvent("S1", "Seated", two_hours_ago, 3600);
-        database_.insertSeatEvent("S2", "Unseated", two_hours_ago, 0);
+        //database_.insertSeatEvent("S1", "Seated", two_hours_ago, 3600);
+        //database_.insertSeatEvent("S2", "Unseated", two_hours_ago, 0);
 
         // Insert Current State Event
-        database_.insertSeatEvent("S1", "Seated", current_time, 0);
-        database_.insertSeatEvent("S2", "Seated", current_time, 0);
-        database_.insertSeatEvent("S3", "Unseated", current_time, 0);
+        //database_.insertSeatEvent("S1", "Seated", current_time, 0);
+        //database_.insertSeatEvent("S2", "Seated", current_time, 0);
+        //database_.insertSeatEvent("S3", "Unseated", current_time, 0);
 
 
         return true;
