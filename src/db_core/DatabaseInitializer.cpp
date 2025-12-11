@@ -76,7 +76,7 @@ bool DatabaseInitializer::insertSampleEvents() {
 
         
         for (const auto& seat_id : seat_ids) {
-            // 插入当前状态事件（所有座位都是 Unseated）
+            // Insert current state event (all seats are Unseated)
             database_.insertSeatEvent(seat_id, "Unseated", current_time, 0);
         }
         
