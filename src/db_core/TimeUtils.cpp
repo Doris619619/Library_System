@@ -36,11 +36,11 @@ std::string TimeUtils::addHours(const std::string& timestamp, int hours) {
         throw std::runtime_error("Failed to parse timestamp: " + timestamp);
     }
     
-    // 转换为time_t进行操作
+    // Convert to time_t for operation
     std::time_t time = std::mktime(&tm);
-    time += hours * 3600; // 添加小时
+    time += hours * 3600; // Add hours
     
-    // 转换回tm结构
+    // Convert back to TM structure
     std::tm* new_tm = std::localtime(&time);
     
     std::stringstream result;
@@ -82,7 +82,7 @@ int TimeUtils::getMinutesBetween(const std::string& start, const std::string& en
     std::time_t time_end = std::mktime(&tm_end);
     
     double difference = std::difftime(time_end, time_start);
-    return static_cast<int>(difference / 60); // 转换为分钟
+    return static_cast<int>(difference / 60); // Convert to minutes
 }
 
 bool TimeUtils::isSameDay(const std::string& timestamp1, const std::string& timestamp2) {
