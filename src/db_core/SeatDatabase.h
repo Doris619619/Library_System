@@ -78,6 +78,12 @@ public:
 
     // Mark alert as handled
     bool markAlertAsProcessed(const std::string& alert_id);
+
+    // Batch operation
+    bool beginTransaction();
+    bool commitTransaction();
+    bool rollbackTransaction();
+
 private:
     SeatDatabase(const std::string& db_path);
     ~SeatDatabase() = default;
