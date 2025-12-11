@@ -5,35 +5,17 @@
 #include <vector>
 #include <map>
 
-// 座位状态结构 - 对应B模块的B2CD_State
+//Seat Status Structure - Corresponding to B2CD_State of Module B
 struct SeatStatus {
     std::string seat_id;
     std::string state;  // "Seated", "Unseated", "Anomaly"
-    std::string last_update; // 标准时间戳格式
+    std::string last_update; // Standard timestamp format
     
     SeatStatus(const std::string& id = "", const std::string& s = "Unseated", const std::string& update = "")
         : seat_id(id), state(s), last_update(update) {}
 };
 
-// 基础统计信息 - 对应UI显示需求
-struct BasicStats {
-    int total_seats;
-    int occupied_seats;
-    int anomaly_seats;
-    double overall_occupancy_rate;
-    
-    BasicStats() : total_seats(0), occupied_seats(0), anomaly_seats(0), overall_occupancy_rate(0.0) {}
-};
-
-// 小时数据 - 用于趋势分析
-struct HourlyData {
-    std::string hour;
-    double occupancy_rate;
-    
-    HourlyData(const std::string& h = "", double rate = 0.0) : hour(h), occupancy_rate(rate) {}
-};
-
-// 对应B模块的B2CD_Alert
+// B2CD_Alert corresponding to Module B
 struct AlertData {
     std::string alert_id;
     std::string seat_id;
@@ -43,7 +25,7 @@ struct AlertData {
     bool is_processed;
 };
 
-// 对应B模块的B2C_SeatSnapshot
+// Corresponding B2C_SeatSnapshot of Module B
 struct SeatSnapshot {
     std::string seat_id;
     std::string state;
@@ -51,12 +33,30 @@ struct SeatSnapshot {
     std::string timestamp;
 };
 
-// 对应B模块的B2C_SeatEvent
+// Corresponding B2C_SeatEvent of Module B
 struct SeatEvent {
     std::string seat_id;
     std::string state;
     std::string timestamp;
     int duration_sec;
+};
+
+// Basic Statistical Information - Corresponding UI Display Requirements
+struct BasicStats {
+    int total_seats;
+    int occupied_seats;
+    int anomaly_seats;
+    double overall_occupancy_rate;
+    
+    BasicStats() : total_seats(0), occupied_seats(0), anomaly_seats(0), overall_occupancy_rate(0.0) {}
+};
+
+// Hourly Data - For Trend Analysis
+struct HourlyData {
+    std::string hour;
+    double occupancy_rate;
+    
+    HourlyData(const std::string& h = "", double rate = 0.0) : hour(h), occupancy_rate(rate) {}
 };
 
 #endif // DATA_TYPES_H
