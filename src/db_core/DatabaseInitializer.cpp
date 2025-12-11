@@ -8,17 +8,17 @@ DatabaseInitializer::DatabaseInitializer(SeatDatabase& db) : database_(db) {}
 
 bool DatabaseInitializer::initializeSampleData() {
     try {
-        // 清空现有数据
+        // Clear existing data
         if (!clearExistingData()) {
             return false;
         }
 
-        // 插入样本座位数据
+        // Insert sample seat data
         if (!insertSampleSeats()) {
             return false;
         }
 
-        // 插入样本事件数据
+        // Insert sample event data
         if (!insertSampleEvents()) {
             return false;
         }
@@ -36,7 +36,7 @@ bool DatabaseInitializer::clearExistingData() {
     try {
         database_.beginTransaction();
 
-        // 按正确顺序清空表（考虑外键约束）
+        // Empty tables in the correct order 
         database_.exec("DELETE FROM seat_agg_hourly");
         database_.exec("DELETE FROM seat_snapshots");
         database_.exec("DELETE FROM seat_events");
@@ -54,7 +54,7 @@ bool DatabaseInitializer::clearExistingData() {
 
 bool DatabaseInitializer::insertSampleSeats() {
     try {
-        // 安静学习区 (quiet)
+        // Quiet Study Area (quiet)
         database_.insertSeat("S1", 177, 584, 225, 260);
         database_.insertSeat("S2", 428, 525, 225, 228);
         database_.insertSeat("S3", 272, 411, 167, 112);
@@ -74,11 +74,11 @@ bool DatabaseInitializer::insertSampleEvents() {
         std::string one_hour_ago = TimeUtils::addHours(current_time, -1);
         std::string two_hours_ago = TimeUtils::addHours(current_time, -2);
 
-        // 插入一些历史事件
+        // Insert some historical events
         database_.insertSeatEvent("S1", "Seated", two_hours_ago, 3600);
         database_.insertSeatEvent("S2", "Unseated", two_hours_ago, 0);
 
-        // 插入当前状态事件
+        // Insert Current State Event
         database_.insertSeatEvent("S1", "Seated", current_time, 0);
         database_.insertSeatEvent("S2", "Seated", current_time, 0);
         database_.insertSeatEvent("S3", "Unseated", current_time, 0);
