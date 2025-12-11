@@ -16,7 +16,7 @@ SeatDatabase::SeatDatabase(const std::string& db_path) : db_path_(db_path) {
     }
 }
 
-// 单例模式实现
+// Singleton Pattern Implementation
 SeatDatabase& SeatDatabase::getInstance(const std::string& db_path) {
     static SeatDatabase instance(db_path);
     return instance;
@@ -36,7 +36,7 @@ bool SeatDatabase::initialize() {
     }
 }
 
-// 创建表
+// Create Table
 bool SeatDatabase::createTables() {
     try {
         database_->exec(DatabaseSchemas::CREATE_SEATS_TABLE);
@@ -52,7 +52,7 @@ bool SeatDatabase::createTables() {
     }
 }
 
-// 插入座位事件 - 与B模块的B2C_SeatEvent对齐
+// Insert Seat Event - Align with B2C_SeatEvent of Module B
 bool SeatDatabase::insertSeatEvent(const std::string& seat_id, 
                                   const std::string& state, 
                                   const std::string& timestamp, 
@@ -79,7 +79,7 @@ bool SeatDatabase::insertSeatEvent(const std::string& seat_id,
     }
 }
 
-// 插入快照数据 - 与B模块的B2C_SeatSnapshot对齐
+// Insert snapshot data - align with B module's B2C_SeatSnapshot
 bool SeatDatabase::insertSnapshot(const std::string& timestamp, 
                                  const std::string& seat_id, 
                                  const std::string& state, 
@@ -102,7 +102,7 @@ bool SeatDatabase::insertSnapshot(const std::string& timestamp,
     }
 }
 
-// 插入小时聚合数据
+// Insert hourly aggregated data
 bool SeatDatabase::insertHourlyAggregation(const std::string& date_hour, 
                                           const std::string& seat_id, 
                                           int occupied_minutes) {
@@ -131,7 +131,6 @@ bool SeatDatabase::insertSeat(const std::string& seat_id,
             "INSERT OR REPLACE INTO seats (seat_id, roi_x, roi_y, roi_width, roi_height) VALUES (?, ?, ?, ?, ?)");
         
         query.bind(1, seat_id);
-        // query.bind(2, zone);
         query.bind(2, roi_x);
         query.bind(3, roi_y);
         query.bind(4, roi_width);
@@ -144,7 +143,7 @@ bool SeatDatabase::insertSeat(const std::string& seat_id,
     }
 }
 
-// 插入告警数据
+// Insert alarm data
 bool SeatDatabase::insertAlert(
     const std::string& alert_id,
     const std::string& seat_id,
@@ -176,7 +175,7 @@ bool SeatDatabase::insertAlert(
     }
 }
 
-// 获取未处理告警
+// Get Unprocessed Alerts
 std::vector<AlertData> SeatDatabase::getUnprocessedAlerts() {
     std::lock_guard<std::mutex> lock(db_mutex_);
     std::vector<AlertData> alerts;
@@ -202,7 +201,7 @@ std::vector<AlertData> SeatDatabase::getUnprocessedAlerts() {
     return alerts;
 }
 
-// 标记告警为已处理
+// Mark alert as resolved
 bool SeatDatabase::markAlertAsProcessed(const std::string& alert_id) {
     std::lock_guard<std::mutex> lock(db_mutex_);
     try {
@@ -217,7 +216,7 @@ bool SeatDatabase::markAlertAsProcessed(const std::string& alert_id) {
     }
 }
 
-// 获取当前座位状态
+// Get current seat status
 std::vector<SeatStatus> SeatDatabase::getCurrentSeatStatus() {
     std::lock_guard<std::mutex> lock(db_mutex_);
     std::vector<SeatStatus> results;
@@ -245,7 +244,7 @@ std::vector<SeatStatus> SeatDatabase::getCurrentSeatStatus() {
     return results;
 }
 
-//获取基础统计信息
+// Get basic statistics
 BasicStats SeatDatabase::getCurrentBasicStats() {
     std::lock_guard<std::mutex> lock(db_mutex_);
     BasicStats stats;
@@ -255,13 +254,13 @@ BasicStats SeatDatabase::getCurrentBasicStats() {
     stats.overall_occupancy_rate = 0.0;
     
     try {
-        // 获取总座位数
+        // Get total number of seats
         SQLite::Statement totalQuery(*database_, "SELECT COUNT(*) FROM seats");
         if (totalQuery.executeStep()) {
             stats.total_seats = totalQuery.getColumn(0).getInt();
         }
         
-        // 获取当前占用和异常座位数
+        // Get the number of currently occupied and abnormal seats
         SQLite::Statement statusQuery(*database_, R"(
             SELECT state, COUNT(*) 
             FROM (
@@ -283,7 +282,7 @@ BasicStats SeatDatabase::getCurrentBasicStats() {
             }
         }
         
-        // 计算总体占用率
+        // Calculate overall occupancy rate
         if (stats.total_seats > 0) {
             stats.overall_occupancy_rate = static_cast<double>(stats.occupied_seats + stats.anomaly_seats) / stats.total_seats;
         }
@@ -294,7 +293,7 @@ BasicStats SeatDatabase::getCurrentBasicStats() {
     return stats;
 }
 
-// 获取占用分钟数
+// Get occupied minutes
 int SeatDatabase::getOccupiedMinutes(const std::string& seat_id, 
                                     const std::string& start_time, 
                                     const std::string& end_time) {
@@ -315,7 +314,7 @@ int SeatDatabase::getOccupiedMinutes(const std::string& seat_id,
         
         if (query.executeStep()) {
             int total_seconds = query.getColumn(0).getInt();
-            return total_seconds / 60; // 转换为分钟
+            return total_seconds / 60; // Convert to minutes
         }
     } catch (const std::exception& e) {
         std::cerr << "Get occupied minutes failed: " << e.what() << std::endl;
@@ -324,12 +323,33 @@ int SeatDatabase::getOccupiedMinutes(const std::string& seat_id,
     return 0;
 }
 
-//整体占用率计算
+// Get today's hourly data
+std::vector<HourlyData> SeatDatabase::getTodayHourlyData() {
+    std::vector<HourlyData> result;
+    
+    try {
+        // Get the current date
+        std::string today = TimeUtils::formatTimestamp(getCurrentTimestamp(), "%Y-%m-%d");
+        // Query hourly data
+        auto hourly_rates = getDailyHourlyOccupancy(today);
+        
+        for (int hour = 0; hour < 24; ++hour) {
+            std::string hour_str = (hour < 10 ? "0" : "") + std::to_string(hour) + ":00";
+            result.emplace_back(hour_str, hourly_rates[hour]);
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "Get today hourly data failed: " << e.what() << std::endl;
+    }
+    
+    return result;
+}
+
+// Overall Utilization Calculation
 double SeatDatabase::getOverallOccupancyRate(const std::string& date_hour) {
     std::lock_guard<std::mutex> lock(db_mutex_);
     
     try {
-        // 获取该小时的总座位数
+        // Get the total number of seats for that hour
         SQLite::Statement totalQuery(*database_, "SELECT COUNT(*) FROM seats");
         int total_seats = 0;
         if (totalQuery.executeStep()) {
@@ -338,7 +358,7 @@ double SeatDatabase::getOverallOccupancyRate(const std::string& date_hour) {
         
         if (total_seats == 0) return 0.0;
         
-        // 获取该小时的占用座位数
+        // Get the number of occupied seats for that hour
         SQLite::Statement occupiedQuery(*database_, R"(
             SELECT COUNT(DISTINCT seat_id) 
             FROM seat_events 
@@ -362,7 +382,7 @@ double SeatDatabase::getOverallOccupancyRate(const std::string& date_hour) {
     }
 }
 
-//日小时占用率
+// Daily Hour Utilization Rate
 std::vector<double> SeatDatabase::getDailyHourlyOccupancy(const std::string& date) {
     std::vector<double> hourly_rates(24, 0.0);
     
@@ -381,7 +401,7 @@ std::vector<double> SeatDatabase::getDailyHourlyOccupancy(const std::string& dat
 }
 
 
-// 开始事务
+// Start transaction
 bool SeatDatabase::beginTransaction() {
     std::lock_guard<std::mutex> lock(db_mutex_);
     try {
@@ -393,7 +413,7 @@ bool SeatDatabase::beginTransaction() {
     }
 }
 
-// 提交事务
+// Commit transaction
 bool SeatDatabase::commitTransaction() {
     std::lock_guard<std::mutex> lock(db_mutex_);
     try {
@@ -405,7 +425,7 @@ bool SeatDatabase::commitTransaction() {
     }
 }
 
-// 回滚事务
+// Rollback transaction
 bool SeatDatabase::rollbackTransaction() {
     std::lock_guard<std::mutex> lock(db_mutex_);
     try {
@@ -417,7 +437,7 @@ bool SeatDatabase::rollbackTransaction() {
     }
 }
 
-// 工具方法
+// Utility method
 std::vector<std::string> SeatDatabase::getAllSeatIds() {
     std::lock_guard<std::mutex> lock(db_mutex_);
     std::vector<std::string> seat_ids;
@@ -436,7 +456,7 @@ std::vector<std::string> SeatDatabase::getAllSeatIds() {
 }
 
 std::string SeatDatabase::getCurrentTimestamp() {
-    // 简单实现，实际应该使用TimeUtils
+    // Simple implementation, can also use TimeUtils
     time_t now = time(nullptr);
     char buffer[20];
     strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", localtime(&now));
@@ -454,25 +474,4 @@ bool SeatDatabase::exec(const std::string& sql) {
         std::cerr << "SQL: " << sql << std::endl;
         return false;
     }
-}
-
-// 获取今日小时数据
-std::vector<HourlyData> SeatDatabase::getTodayHourlyData() {
-    std::vector<HourlyData> result;
-    
-    try {
-        //获取当前日期
-        std::string today = TimeUtils::formatTimestamp(getCurrentTimestamp(), "%Y-%m-%d");
-        //查询小时数据
-        auto hourly_rates = getDailyHourlyOccupancy(today);
-        
-        for (int hour = 0; hour < 24; ++hour) {
-            std::string hour_str = (hour < 10 ? "0" : "") + std::to_string(hour) + ":00";
-            result.emplace_back(hour_str, hourly_rates[hour]);
-        }
-    } catch (const std::exception& e) {
-        std::cerr << "Get today hourly data failed: " << e.what() << std::endl;
-    }
-    
-    return result;
 }
