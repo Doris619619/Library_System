@@ -4,7 +4,7 @@
 #include <string>
 
 namespace DatabaseSchemas {
-    //座位
+    //Seat
     const std::string CREATE_SEATS_TABLE = R"(
         CREATE TABLE IF NOT EXISTS seats (
             seat_id TEXT PRIMARY KEY,
@@ -15,7 +15,7 @@ namespace DatabaseSchemas {
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
     )";
-    //座位事件
+    //Seating incident
     const std::string CREATE_SEAT_EVENTS_TABLE = R"(
         CREATE TABLE IF NOT EXISTS seat_events (
             event_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -26,7 +26,7 @@ namespace DatabaseSchemas {
             FOREIGN KEY (seat_id) REFERENCES seats(seat_id)
         );
     )";
-    //座位快照
+    //Seat Snapshot
     const std::string CREATE_SEAT_SNAPSHOTS_TABLE = R"(
         CREATE TABLE IF NOT EXISTS seat_snapshots (
             snapshot_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -37,7 +37,7 @@ namespace DatabaseSchemas {
             FOREIGN KEY (seat_id) REFERENCES seats(seat_id)
         );
     )";
-    //座位每小时聚合数据
+    //Seat data aggregated per hour
     const std::string CREATE_SEAT_AGG_HOURLY_TABLE = R"(
         CREATE TABLE IF NOT EXISTS seat_agg_hourly (
             agg_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -48,7 +48,7 @@ namespace DatabaseSchemas {
             UNIQUE(date_hour, seat_id)
         );
     )";
-    //告警表
+    //Alarm Table
     const std::string CREATE_ALERTS_TABLE = R"(
         CREATE TABLE IF NOT EXISTS alerts (
             alert_id TEXT PRIMARY KEY,
